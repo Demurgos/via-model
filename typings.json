@@ -1,0 +1,14 @@
+{
+  "name": "via-model",
+  "dependencies": {
+    "bluebird": "registry:npm/bluebird#3.2.1+20160211005852",
+    "lodash": "registry:npm/lodash#4.0.0+20160305082308",
+    "via-type": "npm:via-type"
+  },
+  "devDependencies": {},
+  "ambientDependencies": {
+    "chai": "registry:dt/chai#3.4.0+20160216071402",
+    "mocha": "registry:dt/mocha#2.2.5+20151023103246",
+    "node": "registry:dt/node#4.0.0+20160311162451"
+  }
+}

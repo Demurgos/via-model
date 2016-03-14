@@ -1,0 +1,37 @@
+{
+  "name": "via-model",
+  "version": "0.0.0",
+  "description": "Document oriented models",
+  "main": "dist/node/node/main.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/demurgos/via-type.git"
+  },
+  "scripts": {
+    "test": "gulp test",
+    "postinstall": "gulp install.noNpm"
+  },
+  "keywords": [
+    "orm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "chai": "^3.4.1",
+    "gulp": "^3.9.0",
+    "typescript": "^1.8.0-dev.20160125",
+    "via-build-tools": "^0.7.6"
+  },
+  "jspm": {
+    "configFile": "systemjs.config.js",
+    "dependencies": {
+      "lodash": "npm:lodash@^4.0.0"
+    },
+    "devDependencies": {}
+  },
+  "dependencies": {
+    "bluebird": "^3.2.1",
+    "lodash": "^4.0.0",
+    "via-type": "^0.1.3"
+  }
+}
