@@ -6,24 +6,17 @@ import {IntegerType} from "via-type";
 import {Proxy} from "./proxy";
 import {deepMerge} from "./helpers";
 import * as objectPath from "./object-path";
+import {ModelToken, Query} from "./interfaces";
+import {DocumentType} from "via-type/dist/node/core/document";
 
-export interface ModelToken {
-  _id: string;
-  _name: string;
-}
 
 interface GetProxyOptions {
   proxy?: Proxy;
 }
 
-interface IsPersistantOptions extends GetProxyOptions {
+interface ExistsOptions extends GetProxyOptions {
   strict: boolean;
 }
-
-interface Query {
-  [objectPath: string]: any;
-}
-
 
 export class Model {
   public _id: string;
@@ -34,6 +27,7 @@ export class Model {
   private _changes: any;
   private _updatedProperties: string[];
   private _defaultProxy: Proxy;
+  private _schema: DocumentType;
 
   constructor () {
     this._ = this;
@@ -69,7 +63,7 @@ export class Model {
     }
   }
 
-  exists (options: IsPersistantOptions): Promise<boolean> {
+  exists (options: ExistsOptions): Promise<boolean> {
     if (this.getId() === null) {
       return Promise.resolve(false);
     } else if (options.strict === false) {
@@ -80,7 +74,16 @@ export class Model {
   }
 
   getDefaultData (options?: any): Promise<any> {
-    return Promise.resolve({});
+    return Promise.try(() => {
+      let date = new Date();
+      let data = {
+        _id: this.getId(),
+        _rev: date,
+        _created: date,
+        _tested: date
+      };
+      return data;
+    });
   }
 
   create (options?: any) {
@@ -98,7 +101,10 @@ export class Model {
             return this.getDefaultData();
           })
           .then((data) => {
-            _.assign(data, this._data);
+            data = _.assign(data, this._data);
+            return this.test(data).thenReturn(data);
+          })
+          .then((data) => {
             return this.encode(data, proxy.format);
           })
           .then((encodedData) => {
@@ -155,7 +161,7 @@ export class Model {
     return this;
   }
 
-  load (fields, getProxyOptions: GetProxyOptions) {
+  load (fields, getProxyOptions?: GetProxyOptions) {
     // check if updated is empty, warn otherwise
     return this
       .getProxy(getProxyOptions)
@@ -168,12 +174,40 @@ export class Model {
       })
   }
 
-  decode (data: any, format: string): Promise<any> {
-    return Promise.resolve(data);
+  decode (data: any, format: string | Promise<string>): Promise<any> {
+    if (_.isUndefined(format)) {
+      format = this
+        .getProxy()
+        .then<string>((proxy: Proxy) => proxy.format);
+    }
+
+    return Promise
+      .join(
+        this.getSchema(),
+        format,
+        function(schema, format){
+          return schema
+            .read(data, format);
+        }
+      );
   }
 
-  encode (data: any, format: string): Promise<any> {
-    return Promise.resolve(data);
+  encode (data: any, format: string | Promise<string>): Promise<any> {
+    if (_.isUndefined(format)) {
+      format = this
+        .getProxy()
+        .then<string>((proxy: Proxy) => proxy.format);
+    }
+
+    return Promise
+      .join(
+        this.getSchema(),
+        format,
+        (schema, format) => {
+          return schema
+            .write(data, format);
+        }
+      );
   }
 
   importData (data: any, format: string): Promise<Model> {
@@ -272,12 +306,16 @@ export class Model {
 
   set (query: Query, opt?: any) {
     opt = opt || {};
-    return Promise
-      .all(
-        _.map(query, (value, field) => {
-          return self.prepare(field, value);
-        })
-      )
+    return this
+      .test(query, {throwError: true}) // TODO: throwError option
+      .then((res: Error) => {
+        return Promise
+          .all(
+            _.map(query, (value, field) => {
+              return self.prepare(field, value);
+            })
+          )
+      })
       .then(() => {
         // TODO: remove this option (commit must be explicitly called)
         return opt.commit ? this.commit(opt) : this;
@@ -289,6 +327,34 @@ export class Model {
     query[objectPath.stringify(path)] = value;
     return this.set(query, opt);
   }
+
+  getSchema (): Promise<DocumentType> {
+    return Promise.resolve(null);
+  }
+
+  test (query: any, opt?: any): any {
+    return this.getSchema()
+      .call("test", query, {allowPartial: true});
+  }
+
+  testOne (field, val, opt) {
+    var query = {};
+    query[field] = val;
+
+    return this.test(query, opt);
+  }
+
+  ensureValid (): Promise<Model> {
+    return this.getSchema().then((schema: DocumentType) => {
+      return schema
+        .test(this._data)
+        .then(res => {
+          return res === null;
+        });
+    })
+    .thenReturn(this);
+  }
+
 
   toPlain (paths: objectPath.ObjectPath[], opt?: any): any {
     return {};
@@ -362,7 +428,7 @@ export class Model {
     return model;
   }
 
-  static getById (ctor, id, opt): Model {
+  static getById (ctor, id, opt): Promise<Model> {
     opt = _.assign({data: null, ensureExists: false}, opt)
 
     return Promise.try(<Function> Model.getByIdSync, [ctor, id, opt])
@@ -371,7 +437,7 @@ export class Model {
           return Promise.resolve(model);
         }
         return model
-          .exists(true)
+          .exists({strict: true})
           .then(function(res){
             if (res !== true){
               throw new Error("modelNotFound: "+id+" not found");
@@ -381,7 +447,7 @@ export class Model {
       })
   }
 
-  static find (ctor, selector, fields, opt) {
+  static find (ctor, selector, fields, opt): Promise<Model[]> {
     opt = _.defaults(opt || {}, {proxy: null});
 
     return ctor
@@ -391,11 +457,11 @@ export class Model {
           .find(selector, fields)
           .map(function(cur, i, l){
             return Model
-              .getModel(cur._name, true)
+              .getModelClass(cur._name, true)
               .getByIdSync(cur._id)
               .importData(cur, proxy.format)
-          })
-      })
+          });
+      });
   }
 
   static cast(list: any[]): Model[] {
@@ -409,7 +475,7 @@ export class Model {
   }
 
   // TODO(Charles): fix ?
-  static castOne(token: any): any {
+  static castOne(token: ModelToken): any {
     if (token === null) {
       return null;
     }

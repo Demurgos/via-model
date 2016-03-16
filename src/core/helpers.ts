@@ -1,3 +1,9 @@
+// TODO: compatibility ?
+export function defineProperty (obj: Object, prop: string, descriptor: any): Object {
+  Object.defineProperty(obj, prop, descriptor);
+  return obj;
+}
+
 // inspired from
 // https://github.com/nrf110/deepmerge/blob/master/index.js
 export function deepMerge (target: any, src: any, mergeArrays: boolean): any {
