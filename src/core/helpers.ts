@@ -16,14 +16,14 @@ export function deepMerge (target: any, src: any, mergeArrays: boolean): any {
     if (replaceArray) {
       return destination;
     }
-    src.forEach(function(e, i) {
-      if (typeof destination[i] === 'undefined') {
-        destination[i] = e;
-      } else if (typeof e === 'object') {
-        destination[i] = deepMerge(target[i], e, mergeArrays);
+    src.forEach(function(item: any, index: number) {
+      if (typeof destination[index] === 'undefined') {
+        destination[index] = item;
+      } else if (typeof item === 'object') {
+        destination[index] = deepMerge(target[index], item, mergeArrays);
       } else {
-        if (target.indexOf(e) === -1) {
-          destination.push(e);
+        if (target.indexOf(item) === -1) {
+          destination.push(item);
         }
       }
     });

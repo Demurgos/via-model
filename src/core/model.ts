@@ -1,33 +1,24 @@
 import * as Promise from "bluebird";
 import * as _ from "lodash";
 
-import {IntegerType} from "via-type";
-
-import {Proxy} from "./proxy";
 import {deepMerge} from "./helpers";
 import * as objectPath from "./object-path";
 import {ModelToken, Query} from "./interfaces";
-import {DocumentType} from "via-type/dist/node/core/document";
+import {Proxy, ViaSchema, Dictionary} from "via-core";
+import {IModel, StaticModel, FindOptions} from "./interfaces";
+import {GetProxyOptions, ExistsOptions, CommitOptions, LoadOptions} from "./interfaces";
+import {Cursor} from "~via-core/dist/node/core/interfaces/proxy";
 
-
-interface GetProxyOptions {
-  proxy?: Proxy;
-}
-
-interface ExistsOptions extends GetProxyOptions {
-  strict: boolean;
-}
-
-export class Model {
-  public _id: string;
+export class Model implements IModel {
   public _name: "model";
   public _: Model; // self-reference
 
+  private _id: string;
   private _data: any;
   private _changes: any;
   private _updatedProperties: string[];
   private _defaultProxy: Proxy;
-  private _schema: DocumentType;
+  private _schema: ViaSchema;
 
   constructor () {
     this._ = this;
@@ -69,7 +60,11 @@ export class Model {
     } else if (options.strict === false) {
       return Promise.resolve(true);
     } else {
-      return options.proxy.exists(this.getId());
+      // TODO: Support exists
+      return this
+        .getProxy(options)
+        // .call("exists", this.getId())
+        .thenReturn(false);
     }
   }
 
@@ -86,8 +81,8 @@ export class Model {
     });
   }
 
-  create (options?: any) {
-    let options = _.assign({}, options);
+  create (options?: any): Promise<Model> {
+    options = _.assign({}, options);
 
     return this
       .getProxy(options)
@@ -116,41 +111,38 @@ export class Model {
               throw new Error("Unable to create");
             }
 
-            this.setId(response._id);
+            this.setId((<any> response)._id); // TODO: fix type
             return this.importData(response, proxy.format);
           });
       });
   }
 
-  updateLocal (data) {
+  updateLocal (data: Dictionary<any>): Model {
     this._data = deepMerge(this._data, data, false); // TODO: test with arrays
     return this;
   }
 
-  readLocal (fields) {
+  readLocal (fields: objectPath.ObjectPath[]) {
     let cached: any = {};
-    let missing: string[] = [];
-    // recursivity
+    let missing: objectPath.ObjectPath[] = [];
+
     _.forEach(fields, (field) => {
-      var parsed = objectPath.parse(field);
-      if (!parsed.length) {
-        return true; // continue
-      }
-      let done = [];
-      let cur = this._data;
+      let parsed: objectPath.ObjectPath = objectPath.parse(field);
+      let curPath: objectPath.ObjectPath = [];
+      let curValue: any = this._data;
 
       while (parsed.length) {
-        var part = parsed.shift();
-        done.push(part);
-        if (_.has(cur, part)) {
-          cur = cur[part];
-        }else{
-          missing.push(objectPath.stringify(done));
+        let part: string|number = parsed.shift();
+        curPath.push(part);
+        if (_.has(curValue, part)) {
+          curValue = curValue[part];
+        } else {
+          missing.push(curPath);
           return true;
         }
       }
 
-      cached[done[0]] = self._data[done[0]];
+      cached[curPath[0]] = this._data[curPath[0]];
     });
 
     return {data: cached, missing: missing};
@@ -161,14 +153,14 @@ export class Model {
     return this;
   }
 
-  load (fields, getProxyOptions?: GetProxyOptions) {
+  load (fields: objectPath.ObjectPath[], getProxyOptions?: LoadOptions) {
     // check if updated is empty, warn otherwise
     return this
       .getProxy(getProxyOptions)
       .then((proxy) => {
         return proxy
-          .get(this.getId(), fields)
-          .then((data) => {
+          .readById(this.getId(), {fields: null}) // TODO(Charles): do not read all but fields
+          .then((data: Object) => {
             return this.importData(data, proxy.format);
           });
       })
@@ -182,10 +174,10 @@ export class Model {
     }
 
     return Promise
-      .join(
+      .join<any> (
         this.getSchema(),
         format,
-        function(schema, format){
+        (schema: ViaSchema, format: string) => {
           return schema
             .read(data, format);
         }
@@ -200,10 +192,10 @@ export class Model {
     }
 
     return Promise
-      .join(
+      .join<any> (
         this.getSchema(),
         format,
-        (schema, format) => {
+        (schema: ViaSchema, format: string) => {
           return schema
             .write(data, format);
         }
@@ -227,22 +219,20 @@ export class Model {
   };
 
   //do not empty _write & _updated ?
-  commit (opt) {
-    opt = opt || {};
+  commit (options?: CommitOptions): Promise<Model> {
+    options = options || {};
 
-    if (opt.local || !this._updatedProperties.length) {
-      return this; // hum ?
-      /*return self
-        .readData(self._write)
-        .thenResolve(self);*/}
+    if (!this._updatedProperties.length) {
+      return Promise.resolve(this);
+    }
 
     let id = this.getId();
     if (id === null) {
       return Promise.reject(new Error("Object is not created"));
     }
 
-    let query = {};
-    _.each(this._updatedProperties, (item) => {
+    let query: Dictionary<any> = {};
+    _.each(this._updatedProperties, (item: string) => {
       query[item] = this._changes[item];
     });
 
@@ -255,7 +245,7 @@ export class Model {
         return this
           .encode(query, proxy.format)
           .then((rawQuery) => {
-            return proxy.set(id, rawQuery)
+            return proxy.updateById(id, "rev", rawQuery); // TODO: track rev
           })
           .then((rawResponse) => {
             return this
@@ -272,8 +262,10 @@ export class Model {
       return Promise.resolve(data);
     }
 
+    let parsedMissing: objectPath.ObjectPath[] = local.missing.map(objectPath.parse);
+
     return this
-      .load(local.missing) // TODO: option strict: check if data is loaded
+      .load(parsedMissing) // TODO: option strict: check if data is loaded
       .then(() => {
         let local = this.readLocal(paths);
         return deepMerge(data, local.data, false);
@@ -288,33 +280,29 @@ export class Model {
       });
   }
 
-  prepare (path: objectPath.ObjectPath, value, opt?: any): Promise<Model> {
+  prepare (path: objectPath.ObjectPath, value: any, opt?: any): Promise<Model> {
     opt = opt || {};
 
     return Promise.try(() => {
-      let parsedPath = path; // utils.field.parse(field);
-
-      // if (!(path && path.length)) {
-      //   return Promise.reject(new Error("Cannot parse field path in Model:prepare, field="+field))
-      // }
+      let parsedPath = objectPath.parse(<any> path); // utils.field.parse(field);
 
       objectPath.set(this._changes, path, value);
-      this._updatedProperties.push(path[0]);
+      this._updatedProperties.push(<string> parsedPath[0]);
       return this;
-    })
+    });
   }
 
   set (query: Query, opt?: any) {
     opt = opt || {};
     return this
-      .test(query, {throwError: true}) // TODO: throwError option
+      .test(query, {throwError: true}) // TODO: use throwError option
       .then((res: Error) => {
         return Promise
           .all(
-            _.map(query, (value, field) => {
-              return self.prepare(field, value);
+            _.map(query, (value: any, field: string) => {
+              return this.prepare(objectPath.parse(field), value);
             })
-          )
+          );
       })
       .then(() => {
         // TODO: remove this option (commit must be explicitly called)
@@ -323,29 +311,31 @@ export class Model {
   }
 
   setOne (path: objectPath.ObjectPath, value: any, opt?: any) {
-    let query = {};
+    let query: Dictionary<any> = {};
     query[objectPath.stringify(path)] = value;
     return this.set(query, opt);
   }
 
-  getSchema (): Promise<DocumentType> {
-    return Promise.resolve(null);
+  getSchema (): Promise<ViaSchema> {
+    return Promise.resolve(this._schema);
   }
 
-  test (query: any, opt?: any): any {
+  test (query: any, opt?: any): Promise<Error> {
     return this.getSchema()
-      .call("test", query, {allowPartial: true});
+      .then((schema: ViaSchema) => {
+        return schema.test(query); // TODO: add options {allowPartial: true};
+      });
   }
 
-  testOne (field, val, opt) {
-    var query = {};
-    query[field] = val;
+  testOne (field: objectPath.ObjectPath, val: any, opt?: any) {
+    var query: Dictionary<any> = {};
+    query[objectPath.stringify(field)] = val;
 
     return this.test(query, opt);
   }
 
   ensureValid (): Promise<Model> {
-    return this.getSchema().then((schema: DocumentType) => {
+    return this.getSchema().then((schema: ViaSchema) => {
       return schema
         .test(this._data)
         .then(res => {
@@ -366,142 +356,142 @@ export class Model {
     // return model._load(fields, opt);
   };
 
-  toJSON () {
+  toJSON (): ModelToken {
     return this.getToken();
-  }
-
-  static _models: {[name: string]: Model} = {};
-
-  static getModelClass (name, ensureExists) {
-    // TODO fix: name should be a constructor, not an instance!
-    // let model = name instanceof Model ? name : (Model._models[name] || null);
-    let staticModel: any;
-    if (_.isString(name)) {
-      staticModel = Model._models[name] || null;
-    } else {
-      name = name._name;
-    }
-
-    if (ensureExists && staticModel === null) {
-      throw new Error("unknownModel");
-      // throw new _Error("unknownModel", {name: name}, `Unknown model name ${name}`);
-    }
-
-    return staticModel;
-  }
-
-  static setModelClass (name: string, ctor: any, opt): any {
-    opt = _.assign({}, opt);
-
-    // Model.generateAccessors(ctor)
-    return Model._models[name] = ctor;
-  };
-
-  static getNewSync (ctor: any, opt?: any): Model {
-    opt = _.assign({data: null}, opt);
-
-    let model = new ctor(null);
-
-    if (opt.data !== null) {
-      model.updateLocal(opt.data);
-    }
-
-    return model
-  };
-
-  static getNew (ctor, opt): Promise<Model> {
-    opt = _.assign({data: null, save: false}, opt);
-
-    return Promise.try(<Function> Model.getNewSync, [ctor, opt])
-      .then((model: Model) => {
-        return opt.commit ? model.commit(opt) : model;
-      });
-  }
-
-  static getByIdSync (ctor, id, opt): Model {
-    opt = _.assign({data: null}, opt);
-
-    let model = new ctor(id);
-    if (opt.data !== null) {
-      model.updateLocal(opt.data);
-    }
-    return model;
-  }
-
-  static getById (ctor, id, opt): Promise<Model> {
-    opt = _.assign({data: null, ensureExists: false}, opt)
-
-    return Promise.try(<Function> Model.getByIdSync, [ctor, id, opt])
-      .then((model: Model) => {
-        if (!opt.ensureExists) {
-          return Promise.resolve(model);
-        }
-        return model
-          .exists({strict: true})
-          .then(function(res){
-            if (res !== true){
-              throw new Error("modelNotFound: "+id+" not found");
-            }
-            return model;
-          })
-      })
-  }
-
-  static find (ctor, selector, fields, opt): Promise<Model[]> {
-    opt = _.defaults(opt || {}, {proxy: null});
-
-    return ctor
-      .getProxy(opt.proxy)
-      .then(function(proxy){
-        return proxy
-          .find(selector, fields)
-          .map(function(cur, i, l){
-            return Model
-              .getModelClass(cur._name, true)
-              .getByIdSync(cur._id)
-              .importData(cur, proxy.format)
-          });
-      });
-  }
-
-  static cast(list: any[]): Model[] {
-    let res: Model[] = [];
-    for(let i = 0, l = list.length; i<l; i++){
-      let cur = list[i];
-      let ctor = Model.getModelClass(cur._name, true);
-      res.push(ctor.getByIdSync(cur._id)); // updateLocal ?
-    }
-    return res;
-  }
-
-  // TODO(Charles): fix ?
-  static castOne(token: ModelToken): any {
-    if (token === null) {
-      return null;
-    }
-    let ctor = Model.getModelClass(token._name, true);
-    return Model.getByIdSync(ctor, token._id, {}); // updateLocal ?
   }
 }
 
-export function generateAccessors (ctor) {
+let _models: Dictionary<StaticModel> = {};
+
+export function getStaticModel (model: string | StaticModel, ensureExists: boolean): StaticModel {
+  let res: StaticModel = null;
+  if (_.isString(model)) {
+    res = _models[model] || null;
+  } else {
+    // TODO: check if it is really a StaticModel
+    res = <StaticModel> model;
+  }
+
+  if (ensureExists && res === null) {
+    throw new Error("unknownModel");
+    // throw new _Error("unknownModel", {name: name}, `Unknown model name ${name}`);
+  }
+  return res;
+}
+
+export function setModelClass (name: string, ctor: StaticModel, opt?: any): StaticModel {
+  opt = _.assign({}, opt);
+
+  // Model.generateAccessors(ctor)
+  return _models[name] = ctor;
+};
+
+export function getNewSync (ctor: StaticModel, opt?: any): Model {
+  opt = _.assign({data: null}, opt);
+
+  let model: IModel = new ctor();
+
+  if (opt.data !== null) {
+    model.updateLocal(opt.data);
+  }
+
+  // TODO(Charles): remove <any>
+  return <any> model
+};
+
+export function getNew (ctor: StaticModel, opt?: any): Promise<Model> {
+  opt = _.assign({data: null, commit: false}, opt);
+
+  return Promise.try(<any> getNewSync, [ctor, opt])
+    .then((model: Model) => {
+      return opt.commit ? model.commit(opt) : model;
+    });
+}
+
+export function getByIdSync (ctor: StaticModel, id: string, opt?: any): Model {
+  opt = _.assign({data: null}, opt);
+
+  let model = new ctor({id: id});
+  if (opt.data !== null) {
+    model.updateLocal(opt.data);
+  }
+  return model;
+}
+
+export function getById (ctor: StaticModel, id: string, opt?: any): Promise<Model> {
+  opt = _.assign({data: null, ensureExists: false}, opt)
+
+  return Promise.try(<any> getByIdSync, [ctor, id, opt])
+    .then((model: Model) => {
+      if (!opt.ensureExists) {
+        return Promise.resolve(model);
+      }
+      return model
+        .exists({strict: true})
+        .then(function(res){
+          if (res !== true){
+            throw new Error("modelNotFound: "+id+" not found");
+          }
+          return model;
+        })
+    });
+}
+
+export function find (ctor: StaticModel, filter: Object, opt?: FindOptions): Promise<Model[]> {
+  opt = _.defaults(opt || {}, {proxy: null});
+
+return Promise.resolve(opt.proxy)
+  .then((proxy: Proxy) => {
+    return proxy
+      .read(filter)
+      .then((cursor: Cursor) => {
+        return cursor.toArray();
+      })
+      .map((doc: any, index: number, length: number) => {
+        return getStaticModel(doc._name, true)
+          .getByIdSync(doc._id)
+          .importData(doc, proxy.format)
+      });
+  });
+}
+
+export function cast(list: any[]): Model[] {
+  let res: Model[] = [];
+  for(let i = 0, l = list.length; i<l; i++){
+    let cur = list[i];
+    let ctor = getStaticModel(cur._name, true);
+    res.push(ctor.getByIdSync(cur._id)); // updateLocal ?
+  }
+  return res;
+}
+
+// TODO(Charles): fix ?
+export function castOne(token: ModelToken): any {
+  if (token === null) {
+    return null;
+  }
+  let ctor = getStaticModel(token._name, true);
+  return getByIdSync(ctor, token._id, {}); // updateLocal ?
+}
+
+export function generateAccessors (ctor: StaticModel) {
   ctor.getNewSync = function(opt){
-    return Model.getNewSync(ctor, opt)
+    return getNewSync(ctor, opt)
   };
 
-  ctor.getNew = function(opt){
-    return Model.getNew(ctor, opt)
+  ctor.getNew = function(options?: any) {
+    return getNew(ctor, options);
   };
 
   ctor.getByIdSync = function(id, opt){
-    return Model.getByIdSync(ctor, id, opt)
+    return getByIdSync(ctor, id, opt);
   };
 
   ctor.getById = function(id, opt){
-    return Model.getById(ctor, id, opt)
+    return getById(ctor, id, opt);
   };
 
-  ctor.find = function(selector, fields, opt){
-    return Model.find(ctor, selector, fields, opt)
+  ctor.find = function(filter: Object, options?: FindOptions){
+    return find(ctor, filter, options);
   };
 }

@@ -28,17 +28,21 @@ export function has(obj: any, path: ObjectPath): any {
   return true; // TODO(Charles)
 }
 
-export function parse(path: string): ObjectPath {
+// TODO(Charles): throw if empty
+export function parse(path: string | ObjectPath): ObjectPath {
+  if (Array.isArray(path)) {
+    return path;
+  }
   return [];
 }
 
 export function stringify (path: ObjectPath): string {
   if (_.isString(path)) {
-    return <string> path;
+    return <string> <any> path;
   }
-  var str = [];
-  var part;
-  var separator;
+  let str: string[] = [];
+  let part: string | number;
+  let separator: string;
   for (var i=0, l=path.length; i<l; i++) {
     part = path[i];
     separator = i > 0 ? "." : "";
