@@ -8,8 +8,7 @@
     "url": "git://github.com/demurgos/via-model.git"
   },
   "scripts": {
-    "test": "gulp test",
-    "postinstall": "gulp install.noNpm"
+    "test": "gulp test"
   },
   "keywords": [
     "orm"
