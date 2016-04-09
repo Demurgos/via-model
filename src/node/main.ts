@@ -1,2 +1,1 @@
-import {Model} from "../core/model";
-
+export {Model} from "../core/model";

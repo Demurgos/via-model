@@ -31,7 +31,7 @@ export function has(obj: any, path: ObjectPath): any {
 // TODO(Charles): throw if empty
 export function parse(path: string | ObjectPath): ObjectPath {
   if (Array.isArray(path)) {
-    return path;
+    return <ObjectPath> path;
   }
   return [];
 }
