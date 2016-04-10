@@ -5,6 +5,7 @@ var helpers_1 = require("./helpers");
 var objectPath = require("./object-path");
 var Model = (function () {
     function Model() {
+        this._name = "model";
         this._ = this;
         this._data = {};
         this._changes = {};
@@ -160,7 +161,7 @@ var Model = (function () {
         return Promise
             .join(this.getSchema(), format, function (schema, format) {
             return schema
-                .write(data, format);
+                .write(format, data);
         });
     };
     Model.prototype.importData = function (data, format) {
@@ -305,29 +306,6 @@ var Model = (function () {
     return Model;
 }());
 exports.Model = Model;
-var _models = {};
-function getStaticModel(model, ensureExists) {
-    var res = null;
-    if (_.isString(model)) {
-        res = _models[model] || null;
-    }
-    else {
-        // TODO: check if it is really a StaticModel
-        res = model;
-    }
-    if (ensureExists && res === null) {
-        throw new Error("unknownModel");
-    }
-    return res;
-}
-exports.getStaticModel = getStaticModel;
-function setModelClass(name, ctor, opt) {
-    opt = _.assign({}, opt);
-    // Model.generateAccessors(ctor)
-    return _models[name] = ctor;
-}
-exports.setModelClass = setModelClass;
-;
 function getNewSync(ctor, opt) {
     opt = _.assign({ data: null }, opt);
     var model = new ctor();
@@ -338,10 +316,9 @@ function getNewSync(ctor, opt) {
     return model;
 }
 exports.getNewSync = getNewSync;
-;
 function getNew(ctor, opt) {
     opt = _.assign({ data: null, commit: false }, opt);
-    return Promise.try(getNewSync, [ctor, opt])
+    return Promise.try(function () { return getNewSync(ctor, opt); })
         .then(function (model) {
         return opt.commit ? model.commit(opt) : model;
     });
@@ -358,7 +335,7 @@ function getByIdSync(ctor, id, opt) {
 exports.getByIdSync = getByIdSync;
 function getById(ctor, id, opt) {
     opt = _.assign({ data: null, ensureExists: false }, opt);
-    return Promise.try(getByIdSync, [ctor, id, opt])
+    return Promise.try(function () { return getByIdSync(ctor, id, opt); })
         .then(function (model) {
         if (!opt.ensureExists) {
             return Promise.resolve(model);
@@ -384,47 +361,48 @@ function find(ctor, filter, opt) {
             return cursor.toArray();
         })
             .map(function (doc, index, length) {
-            return getStaticModel(doc._name, true)
-                .getByIdSync(doc._id)
-                .importData(doc, proxy.format);
+            return getById(ctor, doc._id)
+                .then(function (model) { return model.importData(doc, proxy.format); });
         });
     });
 }
 exports.find = find;
-function cast(list) {
+function cast(list, modelsGroup) {
     var res = [];
     for (var i = 0, l = list.length; i < l; i++) {
         var cur = list[i];
-        var ctor = getStaticModel(cur._name, true);
+        var ctor = modelsGroup.getModelClass(cur._name, true);
         res.push(ctor.getByIdSync(cur._id)); // updateLocal ?
     }
     return res;
 }
 exports.cast = cast;
 // TODO(Charles): fix ?
-function castOne(token) {
+function castOne(token, modelsGroup) {
     if (token === null) {
         return null;
     }
-    var ctor = getStaticModel(token._name, true);
+    var ctor = modelsGroup.getModelClass(token._name, true);
     return getByIdSync(ctor, token._id, {}); // updateLocal ?
 }
 exports.castOne = castOne;
 function generateAccessors(ctor) {
-    ctor.getNewSync = function (opt) {
+    var tmpCtor = ctor;
+    tmpCtor.getNewSync = function (opt) {
         return getNewSync(ctor, opt);
     };
-    ctor.getNew = function (options) {
+    tmpCtor.getNew = function (options) {
         return getNew(ctor, options);
     };
-    ctor.getByIdSync = function (id, opt) {
+    tmpCtor.getByIdSync = function (id, opt) {
         return getByIdSync(ctor, id, opt);
     };
-    ctor.getById = function (id, opt) {
+    tmpCtor.getById = function (id, opt) {
         return getById(ctor, id, opt);
     };
-    ctor.find = function (filter, options) {
+    tmpCtor.find = function (filter, options) {
         return find(ctor, filter, options);
     };
+    return tmpCtor;
 }
 exports.generateAccessors = generateAccessors;

@@ -1,11 +1,12 @@
 import * as Promise from "bluebird";
 import * as objectPath from "./object-path";
-import { ModelToken, Query } from "./interfaces";
+import { ModelToken, Query, ModelConstructor } from "./interfaces";
 import { Proxy, ViaSchema, Dictionary } from "via-core";
 import { IModel, StaticModel, FindOptions } from "./interfaces";
 import { GetProxyOptions, ExistsOptions, CommitOptions, LoadOptions } from "./interfaces";
+import { ModelsGroup } from "./models-group";
 export declare class Model implements IModel {
-    _name: "model";
+    _name: string;
     _: Model;
     private _id;
     private _data;
@@ -45,13 +46,11 @@ export declare class Model implements IModel {
     toPlain(paths: objectPath.ObjectPath[], opt?: any): any;
     toJSON(): ModelToken;
 }
-export declare function getStaticModel(model: string | StaticModel, ensureExists: boolean): StaticModel;
-export declare function setModelClass(name: string, ctor: StaticModel, opt?: any): StaticModel;
-export declare function getNewSync(ctor: StaticModel, opt?: any): Model;
-export declare function getNew(ctor: StaticModel, opt?: any): Promise<Model>;
-export declare function getByIdSync(ctor: StaticModel, id: string, opt?: any): Model;
-export declare function getById(ctor: StaticModel, id: string, opt?: any): Promise<Model>;
-export declare function find(ctor: StaticModel, filter: Object, opt?: FindOptions): Promise<Model[]>;
-export declare function cast(list: any[]): Model[];
-export declare function castOne(token: ModelToken): any;
-export declare function generateAccessors(ctor: StaticModel): void;
+export declare function getNewSync(ctor: ModelConstructor, opt?: any): Model;
+export declare function getNew(ctor: ModelConstructor, opt?: any): Promise<Model>;
+export declare function getByIdSync(ctor: ModelConstructor, id: string, opt?: any): Model;
+export declare function getById(ctor: ModelConstructor, id: string, opt?: any): Promise<Model>;
+export declare function find(ctor: ModelConstructor, filter: Object, opt?: FindOptions): Promise<Model[]>;
+export declare function cast(list: any[], modelsGroup: ModelsGroup): Model[];
+export declare function castOne(token: ModelToken, modelsGroup: ModelsGroup): any;
+export declare function generateAccessors(ctor: ModelConstructor): StaticModel;

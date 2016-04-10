@@ -3,14 +3,15 @@ import * as _ from "lodash";
 
 import {deepMerge} from "./helpers";
 import * as objectPath from "./object-path";
-import {ModelToken, Query} from "./interfaces";
+import {ModelToken, Query, ModelConstructor} from "./interfaces";
 import {Proxy, ViaSchema, Dictionary} from "via-core";
 import {IModel, StaticModel, FindOptions} from "./interfaces";
 import {GetProxyOptions, ExistsOptions, CommitOptions, LoadOptions} from "./interfaces";
 import {Cursor} from "~via-core/dist/node/core/interfaces/proxy";
+import {ModelsGroup} from "./models-group";
 
 export class Model implements IModel {
-  public _name: "model";
+  public _name: string = "model";
   public _: Model; // self-reference
 
   private _id: string;
@@ -197,7 +198,7 @@ export class Model implements IModel {
         format,
         (schema: ViaSchema, format: string) => {
           return schema
-            .write(data, format);
+            .write(format, data);
         }
       );
   }
@@ -361,32 +362,7 @@ export class Model implements IModel {
   }
 }
 
-let _models: Dictionary<StaticModel> = {};
-
-export function getStaticModel (model: string | StaticModel, ensureExists: boolean): StaticModel {
-  let res: StaticModel = null;
-  if (_.isString(model)) {
-    res = _models[model] || null;
-  } else {
-    // TODO: check if it is really a StaticModel
-    res = <StaticModel> model;
-  }
-
-  if (ensureExists && res === null) {
-    throw new Error("unknownModel");
-    // throw new _Error("unknownModel", {name: name}, `Unknown model name ${name}`);
-  }
-  return res;
-}
-
-export function setModelClass (name: string, ctor: StaticModel, opt?: any): StaticModel {
-  opt = _.assign({}, opt);
-
-  // Model.generateAccessors(ctor)
-  return _models[name] = ctor;
-};
-
-export function getNewSync (ctor: StaticModel, opt?: any): Model {
+export function getNewSync (ctor: ModelConstructor, opt?: any): Model {
   opt = _.assign({data: null}, opt);
 
   let model: IModel = new ctor();
@@ -397,18 +373,18 @@ export function getNewSync (ctor: StaticModel, opt?: any): Model {
 
   // TODO(Charles): remove <any>
   return <any> model
-};
+}
 
-export function getNew (ctor: StaticModel, opt?: any): Promise<Model> {
+export function getNew (ctor: ModelConstructor, opt?: any): Promise<Model> {
   opt = _.assign({data: null, commit: false}, opt);
 
-  return Promise.try(<any> getNewSync, [ctor, opt])
+  return Promise.try(() => getNewSync(ctor, opt))
     .then((model: Model) => {
       return opt.commit ? model.commit(opt) : model;
     });
 }
 
-export function getByIdSync (ctor: StaticModel, id: string, opt?: any): Model {
+export function getByIdSync (ctor: ModelConstructor, id: string, opt?: any): Model {
   opt = _.assign({data: null}, opt);
 
   let model = new ctor({id: id});
@@ -418,10 +394,10 @@ export function getByIdSync (ctor: StaticModel, id: string, opt?: any): Model {
   return model;
 }
 
-export function getById (ctor: StaticModel, id: string, opt?: any): Promise<Model> {
+export function getById (ctor: ModelConstructor, id: string, opt?: any): Promise<Model> {
   opt = _.assign({data: null, ensureExists: false}, opt)
-
-  return Promise.try(<any> getByIdSync, [ctor, id, opt])
+  
+  return Promise.try(() => getByIdSync(ctor, id, opt))
     .then((model: Model) => {
       if (!opt.ensureExists) {
         return Promise.resolve(model);
@@ -437,7 +413,7 @@ export function getById (ctor: StaticModel, id: string, opt?: any): Promise<Mode
     });
 }
 
-export function find (ctor: StaticModel, filter: Object, opt?: FindOptions): Promise<Model[]> {
+export function find (ctor: ModelConstructor, filter: Object, opt?: FindOptions): Promise<Model[]> {
   opt = _.defaults(opt || {}, {proxy: null});
 
 return Promise.resolve(opt.proxy)
@@ -448,50 +424,52 @@ return Promise.resolve(opt.proxy)
         return cursor.toArray();
       })
       .map((doc: any, index: number, length: number) => {
-        return getStaticModel(doc._name, true)
-          .getByIdSync(doc._id)
-          .importData(doc, proxy.format)
+        return getById(ctor, doc._id)
+          .then(model => model.importData(doc, proxy.format));
       });
   });
 }
 
-export function cast(list: any[]): Model[] {
+export function cast(list: any[], modelsGroup: ModelsGroup): Model[] {
   let res: Model[] = [];
   for(let i = 0, l = list.length; i<l; i++){
     let cur = list[i];
-    let ctor = getStaticModel(cur._name, true);
+    let ctor = modelsGroup.getModelClass(cur._name, true);
     res.push(ctor.getByIdSync(cur._id)); // updateLocal ?
   }
   return res;
 }
 
 // TODO(Charles): fix ?
-export function castOne(token: ModelToken): any {
+export function castOne(token: ModelToken, modelsGroup: ModelsGroup): any {
   if (token === null) {
     return null;
   }
-  let ctor = getStaticModel(token._name, true);
+  let ctor = modelsGroup.getModelClass(token._name, true);
   return getByIdSync(ctor, token._id, {}); // updateLocal ?
 }
 
-export function generateAccessors (ctor: StaticModel) {
-  ctor.getNewSync = function(opt){
+export function generateAccessors (ctor: ModelConstructor): StaticModel {
+  let tmpCtor = <StaticModel> ctor;
+  tmpCtor.getNewSync = function(opt){
     return getNewSync(ctor, opt)
   };
 
-  ctor.getNew = function(options?: any) {
+  tmpCtor.getNew = function(options?: any) {
     return getNew(ctor, options);
   };
 
-  ctor.getByIdSync = function(id, opt){
+  tmpCtor.getByIdSync = function(id, opt){
     return getByIdSync(ctor, id, opt);
   };
 
-  ctor.getById = function(id, opt){
+  tmpCtor.getById = function(id, opt){
     return getById(ctor, id, opt);
   };
 
-  ctor.find = function(filter: Object, options?: FindOptions){
+  tmpCtor.find = function(filter: Object, options?: FindOptions){
     return find(ctor, filter, options);
   };
+
+  return tmpCtor;
 }
