@@ -189,7 +189,7 @@ export class Model implements IModel {
     }
 
     return Promise
-      .join<any> (
+      .join(
         this.getSchema(),
         format,
         (schema: ViaSchema, format: string) => {
@@ -207,7 +207,7 @@ export class Model implements IModel {
     }
 
     return Promise
-      .join<any> (
+      .join(
         this.getSchema(),
         format,
         (schema: ViaSchema, format: string) => {
@@ -262,7 +262,7 @@ export class Model implements IModel {
     }
 
     return Promise
-      .join<any>( // TODO: .join<Model> once the definitions is fixed
+      .join(
         this.diff(),
         this.getProxy(),
         this.getSchema(),

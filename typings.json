@@ -1,7 +1,7 @@
 {
   "name": "via-model",
   "dependencies": {
-    "bluebird": "registry:npm/bluebird#3.3.4+20160406213700",
+    "bluebird": "registry:npm/bluebird#3.3.4+20160411163813",
     "lodash": "registry:npm/lodash#4.0.0+20160305082308",
     "via-core": "npm:via-core"
   },
