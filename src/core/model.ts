@@ -71,10 +71,7 @@ export class Model implements IModel {
     return Promise.try(() => {
       let date = new Date();
       let data = {
-        _id: this.getId(),
-        _rev: date,
-        _created: date,
-        _tested: date
+        _type: this._name
       };
       return data;
     });
@@ -96,13 +93,20 @@ export class Model implements IModel {
           })
           .then((data) => {
             data = _.assign(data, this._data);
-            return this.test(data).thenReturn(data);
+            return this.test(data)
+              .then((testResult: Error) => {
+                if (testResult !== null) {
+                  return Promise.reject(testResult);
+                }
+              })
+              .thenReturn(data);
           })
           .then((data) => {
             return this.encode(data, proxy.format);
           })
           .then((encodedData) => {
             // this.check(data)
+            delete encodedData._id;
             return proxy.create(encodedData);
           })
           .then((response) => {
@@ -190,7 +194,7 @@ export class Model implements IModel {
         format,
         (schema: ViaSchema, format: string) => {
           return schema
-            .read(data, format);
+            .read(format, data);
         }
       );
   }
@@ -231,21 +235,20 @@ export class Model implements IModel {
 
   diff(): Promise<DocumentDiff> {
     if (this._oldData === null) {
-      return Promise.resolve(null);
+      return Promise.resolve(<DocumentDiff> null);
     }
 
     return this
       .getSchema()
       .then((schema: ViaSchema) => {
-        schema
+        return schema
           .equals(this._data, this._oldData)
           .then((equals: boolean) => {
             if (equals) {
-              return Promise.resolve(null);
+              return Promise.resolve(<DocumentDiff> null);
             }
             return schema
-              .diff(this._oldData, this._data)
-
+              .diff(this._oldData, this._data);
           });
       })
   }
@@ -259,7 +262,7 @@ export class Model implements IModel {
     }
 
     return Promise
-      .join(
+      .join<any>( // TODO: .join<Model> once the definitions is fixed
         this.diff(),
         this.getProxy(),
         this.getSchema(),
@@ -309,7 +312,6 @@ export class Model implements IModel {
 
   set (query: Query, opt?: any): Promise<Model> {
     opt = opt || {};
-    console.log(query);
     return this
       .test(query, {throwError: true}) // TODO: use throwError option
       .then((res: Error) => {

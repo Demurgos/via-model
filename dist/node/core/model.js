@@ -56,7 +56,8 @@ var Model = (function () {
             var date = new Date();
             var data = {
                 _id: _this.getId(),
-                _rev: date,
+                _rev: "1",
+                _type: _this._name,
                 _created: date,
                 _tested: date
             };
@@ -79,13 +80,20 @@ var Model = (function () {
             })
                 .then(function (data) {
                 data = _.assign(data, _this._data);
-                return _this.test(data).thenReturn(data);
+                return _this.test(data)
+                    .then(function (testResult) {
+                    if (testResult !== null) {
+                        return Promise.reject(testResult);
+                    }
+                })
+                    .thenReturn(data);
             })
                 .then(function (data) {
                 return _this.encode(data, proxy.format);
             })
                 .then(function (encodedData) {
                 // this.check(data)
+                delete encodedData._id;
                 return proxy.create(encodedData);
             })
                 .then(function (response) {
@@ -161,7 +169,7 @@ var Model = (function () {
         return Promise
             .join(this.getSchema(), format, function (schema, format) {
             return schema
-                .read(data, format);
+                .read(format, data);
         });
     };
     Model.prototype.encode = function (data, format) {
@@ -201,7 +209,7 @@ var Model = (function () {
         return this
             .getSchema()
             .then(function (schema) {
-            schema
+            return schema
                 .equals(_this._data, _this._oldData)
                 .then(function (equals) {
                 if (equals) {
@@ -220,7 +228,8 @@ var Model = (function () {
             return Promise.reject(new Error("Object is not created"));
         }
         return Promise
-            .join(this.diff(), this.getProxy(), this.getSchema(), function (diff, proxy, schema) {
+            .join(// TODO: .join<Model> once the definitions is fixed
+        this.diff(), this.getProxy(), this.getSchema(), function (diff, proxy, schema) {
             if (diff === null) {
                 return Promise.resolve(_this);
             }
@@ -261,7 +270,6 @@ var Model = (function () {
     Model.prototype.set = function (query, opt) {
         var _this = this;
         opt = opt || {};
-        console.log(query);
         return this
             .test(query, { throwError: true }) // TODO: use throwError option
             .then(function (res) {
