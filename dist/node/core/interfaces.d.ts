@@ -1,5 +1,6 @@
 import * as Promise from "bluebird";
 import { Model } from "./model";
+import { ObjectPath } from "./object-path";
 import { Dictionary } from "via-core";
 import { Proxy } from "via-core";
 export interface Query {
@@ -15,6 +16,10 @@ export interface GetProxyOptions {
 export interface ExistsOptions {
     proxy?: Proxy;
     strict: boolean;
+}
+export interface ReadLocalResult {
+    data: Dictionary<any>;
+    missing: ObjectPath[];
 }
 export interface CommitOptions {
     proxy?: Proxy;

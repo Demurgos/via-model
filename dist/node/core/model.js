@@ -6,11 +6,12 @@ var objectPath = require("./object-path");
 var Model = (function () {
     function Model() {
         this._name = "model";
+        this._defaultProxy = null;
+        this._schema = null;
         this._ = this;
-        this._data = {};
-        this._changes = {};
-        this._updatedProperties = [];
         this._id = null;
+        this._data = {};
+        this._oldData = null;
     }
     Model.prototype.setId = function (id) {
         this._id = id;
@@ -96,9 +97,20 @@ var Model = (function () {
             });
         });
     };
+    // Use objectPath ?
     Model.prototype.updateLocal = function (data) {
         this._data = helpers_1.deepMerge(this._data, data, false); // TODO: test with arrays
         return this;
+    };
+    Model.prototype.updateOneLocal = function (path, value, opt) {
+        var _this = this;
+        opt = opt || {};
+        return Promise.try(function () {
+            var parsedPath = objectPath.parse(path);
+            objectPath.set(_this._data, path, value);
+            // this._updatedProperties.push(<string> parsedPath[0]);
+            return _this;
+        });
     };
     Model.prototype.readLocal = function (fields) {
         var _this = this;
@@ -181,36 +193,48 @@ var Model = (function () {
         });
     };
     ;
-    //do not empty _write & _updated ?
+    Model.prototype.diff = function () {
+        var _this = this;
+        if (this._oldData === null) {
+            return Promise.resolve(null);
+        }
+        return this
+            .getSchema()
+            .then(function (schema) {
+            schema
+                .equals(_this._data, _this._oldData)
+                .then(function (equals) {
+                if (equals) {
+                    return Promise.resolve(null);
+                }
+                return schema
+                    .diff(_this._oldData, _this._data);
+            });
+        });
+    };
     Model.prototype.commit = function (options) {
         var _this = this;
         options = options || {};
-        if (!this._updatedProperties.length) {
-            return Promise.resolve(this);
-        }
         var id = this.getId();
         if (id === null) {
             return Promise.reject(new Error("Object is not created"));
         }
-        var query = {};
-        _.each(this._updatedProperties, function (item) {
-            query[item] = _this._changes[item];
-        });
-        this._changes = {};
-        this._updatedProperties = [];
-        return this
-            .getProxy()
-            .then(function (proxy) {
-            return _this
-                .encode(query, proxy.format)
-                .then(function (rawQuery) {
-                return proxy.updateById(id, "rev", rawQuery); // TODO: track rev
+        return Promise
+            .join(this.diff(), this.getProxy(), this.getSchema(), function (diff, proxy, schema) {
+            if (diff === null) {
+                return Promise.resolve(_this);
+            }
+            return schema
+                .diffToUpdate(_this._data, diff, proxy.format)
+                .then(function (encodedUpdateQuery) {
+                return proxy.updateById(id, "rev", encodedUpdateQuery); // TODO: track rev
             })
                 .then(function (rawResponse) {
                 return _this
                     .importData(rawResponse, proxy.format);
             });
-        });
+        })
+            .thenReturn(this);
     };
     Model.prototype.get = function (paths) {
         var _this = this;
@@ -234,30 +258,25 @@ var Model = (function () {
             return objectPath.get(data, path);
         });
     };
-    Model.prototype.prepare = function (path, value, opt) {
-        var _this = this;
-        opt = opt || {};
-        return Promise.try(function () {
-            var parsedPath = objectPath.parse(path); // utils.field.parse(field);
-            objectPath.set(_this._changes, path, value);
-            _this._updatedProperties.push(parsedPath[0]);
-            return _this;
-        });
-    };
     Model.prototype.set = function (query, opt) {
         var _this = this;
         opt = opt || {};
+        console.log(query);
         return this
             .test(query, { throwError: true }) // TODO: use throwError option
             .then(function (res) {
+            // TODO: remove this test ?
+            if (res !== null) {
+                return Promise.reject(res);
+            }
             return Promise
                 .all(_.map(query, function (value, field) {
-                return _this.prepare(objectPath.parse(field), value);
+                return _this.updateOneLocal(objectPath.parse(field), value);
             }));
         })
             .then(function () {
             // TODO: remove this option (commit must be explicitly called)
-            return opt.commit ? _this.commit(opt) : _this;
+            return opt.commit ? _this.commit(opt) : Promise.resolve(_this);
         });
     };
     Model.prototype.setOne = function (path, value, opt) {
@@ -266,7 +285,7 @@ var Model = (function () {
         return this.set(query, opt);
     };
     Model.prototype.getSchema = function () {
-        return Promise.resolve(this._schema);
+        return this._schema !== null ? Promise.resolve(this._schema) : Promise.reject("Schema is not defined !");
     };
     Model.prototype.test = function (query, opt) {
         return this.getSchema()
@@ -312,7 +331,6 @@ function getNewSync(ctor, opt) {
     if (opt.data !== null) {
         model.updateLocal(opt.data);
     }
-    // TODO(Charles): remove <any>
     return model;
 }
 exports.getNewSync = getNewSync;
@@ -320,7 +338,7 @@ function getNew(ctor, opt) {
     opt = _.assign({ data: null, commit: false }, opt);
     return Promise.try(function () { return getNewSync(ctor, opt); })
         .then(function (model) {
-        return opt.commit ? model.commit(opt) : model;
+        return opt.commit ? model.commit(opt) : Promise.resolve(model);
     });
 }
 exports.getNew = getNew;

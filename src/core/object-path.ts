@@ -28,31 +28,34 @@ export function has(obj: any, path: ObjectPath): any {
   return true; // TODO(Charles)
 }
 
-// TODO(Charles): throw if empty
 export function parse(path: string | ObjectPath): ObjectPath {
   if (Array.isArray(path)) {
     return <ObjectPath> path;
   }
-  return [];
+  if (path.length === 0) {
+    throw new Error("Unable to parse empty string");
+  }
+  return (<string> path).split(".").map((str: string) => /^-?\d+$/.test(str) ? parseInt(str, 10) : str);
 }
 
 export function stringify (path: ObjectPath): string {
   if (_.isString(path)) {
     return <string> <any> path;
   }
-  let str: string[] = [];
-  let part: string | number;
-  let separator: string;
-  for (var i=0, l=path.length; i<l; i++) {
-    part = path[i];
-    separator = i > 0 ? "." : "";
-    if (part === null) {
-      str.push('[]')
-    } else if(typeof part === 'number'){
-      str.push('['+part+']')
-    } else {
-      str.push(separator + part)
-    }
-  }
-  return str.join('')
+  return path.join('.');
+  // let str: string[] = [];
+  // let part: string | number;
+  // let separator: string;
+  // for (var i=0, l=path.length; i<l; i++) {
+  //   part = path[i];
+  //   separator = i > 0 ? "." : "";
+  //   if (part === null) {
+  //     str.push('[]')
+  //   } else if(typeof part === 'number'){
+  //     str.push('['+part+']')
+  //   } else {
+  //     str.push(separator + part)
+  //   }
+  // }
+  // return str.join('')
 }

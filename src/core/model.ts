@@ -6,28 +6,26 @@ import * as objectPath from "./object-path";
 import {ModelToken, Query, ModelConstructor} from "./interfaces";
 import {Proxy, ViaSchema, Dictionary} from "via-core";
 import {IModel, StaticModel, FindOptions} from "./interfaces";
-import {GetProxyOptions, ExistsOptions, CommitOptions, LoadOptions} from "./interfaces";
-import {Cursor} from "~via-core/dist/node/core/interfaces/proxy";
+import {GetProxyOptions, ExistsOptions, CommitOptions, LoadOptions, ReadLocalResult} from "./interfaces";
+import {Cursor, DocumentDiff, UpdateQuery} from "via-core";
 import {ModelsGroup} from "./models-group";
 
 export class Model implements IModel {
   public _name: string = "model";
   public _: Model; // self-reference
 
-  private _id: string;
-  private _data: any;
-  private _changes: any;
-  private _updatedProperties: string[];
-  private _defaultProxy: Proxy;
-  private _schema: ViaSchema;
+  protected _id: string;
+  protected _data: any;
+  protected _oldData: any;
+  protected _defaultProxy: Proxy = null;
+  protected _schema: ViaSchema = null;
 
   constructor () {
     this._ = this;
-    this._data = {};
-    this._changes = {};
-    this._updatedProperties = [];
 
     this._id = null;
+    this._data = {};
+    this._oldData = null;
   }
 
   setId (id: string): Model {
@@ -118,12 +116,24 @@ export class Model implements IModel {
       });
   }
 
+  // Use objectPath ?
   updateLocal (data: Dictionary<any>): Model {
     this._data = deepMerge(this._data, data, false); // TODO: test with arrays
     return this;
   }
 
-  readLocal (fields: objectPath.ObjectPath[]) {
+  updateOneLocal (path: objectPath.ObjectPath, value: any, opt?: any): Promise<Model> {
+    opt = opt || {};
+
+    return Promise.try(() => {
+      let parsedPath = objectPath.parse(<any> path);
+      objectPath.set(this._data, path, value);
+      // this._updatedProperties.push(<string> parsedPath[0]);
+      return this;
+    });
+  }
+
+  readLocal (fields: objectPath.ObjectPath[]): ReadLocalResult {
     let cached: any = {};
     let missing: objectPath.ObjectPath[] = [];
 
@@ -219,40 +229,56 @@ export class Model implements IModel {
       });
   };
 
-  //do not empty _write & _updated ?
+  diff(): Promise<DocumentDiff> {
+    if (this._oldData === null) {
+      return Promise.resolve(null);
+    }
+
+    return this
+      .getSchema()
+      .then((schema: ViaSchema) => {
+        schema
+          .equals(this._data, this._oldData)
+          .then((equals: boolean) => {
+            if (equals) {
+              return Promise.resolve(null);
+            }
+            return schema
+              .diff(this._oldData, this._data)
+
+          });
+      })
+  }
+
   commit (options?: CommitOptions): Promise<Model> {
     options = options || {};
-
-    if (!this._updatedProperties.length) {
-      return Promise.resolve(this);
-    }
 
     let id = this.getId();
     if (id === null) {
       return Promise.reject(new Error("Object is not created"));
     }
 
-    let query: Dictionary<any> = {};
-    _.each(this._updatedProperties, (item: string) => {
-      query[item] = this._changes[item];
-    });
-
-    this._changes = {};
-    this._updatedProperties = [];
-
-    return this
-      .getProxy()
-      .then((proxy: Proxy) => {
-        return this
-          .encode(query, proxy.format)
-          .then((rawQuery) => {
-            return proxy.updateById(id, "rev", rawQuery); // TODO: track rev
-          })
-          .then((rawResponse) => {
-            return this
-              .importData(rawResponse, proxy.format)
-          });
-      });
+    return Promise
+      .join(
+        this.diff(),
+        this.getProxy(),
+        this.getSchema(),
+        (diff: DocumentDiff, proxy:Proxy, schema:ViaSchema) => {
+          if (diff === null) {
+            return Promise.resolve(this);
+          }
+          return schema
+            .diffToUpdate(this._data, diff, proxy.format)
+            .then((encodedUpdateQuery:UpdateQuery) => {
+              return proxy.updateById(id, "rev", encodedUpdateQuery); // TODO: track rev
+            })
+            .then((rawResponse) => {
+              return this
+                .importData(rawResponse, proxy.format)
+            });
+        }
+      )
+      .thenReturn(this);
   }
 
   get (paths: objectPath.ObjectPath[]): Promise<any> {
@@ -281,44 +307,38 @@ export class Model implements IModel {
       });
   }
 
-  prepare (path: objectPath.ObjectPath, value: any, opt?: any): Promise<Model> {
+  set (query: Query, opt?: any): Promise<Model> {
     opt = opt || {};
-
-    return Promise.try(() => {
-      let parsedPath = objectPath.parse(<any> path); // utils.field.parse(field);
-
-      objectPath.set(this._changes, path, value);
-      this._updatedProperties.push(<string> parsedPath[0]);
-      return this;
-    });
-  }
-
-  set (query: Query, opt?: any) {
-    opt = opt || {};
+    console.log(query);
     return this
       .test(query, {throwError: true}) // TODO: use throwError option
       .then((res: Error) => {
+        // TODO: remove this test ?
+        if (res !== null) {
+          return Promise.reject(res);
+        }
+
         return Promise
           .all(
             _.map(query, (value: any, field: string) => {
-              return this.prepare(objectPath.parse(field), value);
+              return this.updateOneLocal(objectPath.parse(field), value);
             })
           );
       })
       .then(() => {
         // TODO: remove this option (commit must be explicitly called)
-        return opt.commit ? this.commit(opt) : this;
+        return opt.commit ? this.commit(opt) : Promise.resolve(this);
       });
   }
 
-  setOne (path: objectPath.ObjectPath, value: any, opt?: any) {
+  setOne (path: objectPath.ObjectPath, value: any, opt?: any): Promise<Model> {
     let query: Dictionary<any> = {};
     query[objectPath.stringify(path)] = value;
     return this.set(query, opt);
   }
 
   getSchema (): Promise<ViaSchema> {
-    return Promise.resolve(this._schema);
+    return this._schema !== null ? Promise.resolve(this._schema) : Promise.reject("Schema is not defined !");
   }
 
   test (query: any, opt?: any): Promise<Error> {
@@ -365,14 +385,13 @@ export class Model implements IModel {
 export function getNewSync (ctor: ModelConstructor, opt?: any): Model {
   opt = _.assign({data: null}, opt);
 
-  let model: IModel = new ctor();
+  let model: Model = new ctor();
 
   if (opt.data !== null) {
     model.updateLocal(opt.data);
   }
 
-  // TODO(Charles): remove <any>
-  return <any> model
+  return model
 }
 
 export function getNew (ctor: ModelConstructor, opt?: any): Promise<Model> {
@@ -380,7 +399,7 @@ export function getNew (ctor: ModelConstructor, opt?: any): Promise<Model> {
 
   return Promise.try(() => getNewSync(ctor, opt))
     .then((model: Model) => {
-      return opt.commit ? model.commit(opt) : model;
+      return opt.commit ? model.commit(opt) : Promise.resolve(model);
     });
 }
 

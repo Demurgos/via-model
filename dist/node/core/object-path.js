@@ -24,34 +24,35 @@ function has(obj, path) {
     return true; // TODO(Charles)
 }
 exports.has = has;
-// TODO(Charles): throw if empty
 function parse(path) {
     if (Array.isArray(path)) {
         return path;
     }
-    return [];
+    if (path.length === 0) {
+        throw new Error("Unable to parse empty string");
+    }
+    return path.split(".").map(function (str) { return /^-?\d+$/.test(str) ? parseInt(str, 10) : str; });
 }
 exports.parse = parse;
 function stringify(path) {
     if (_.isString(path)) {
         return path;
     }
-    var str = [];
-    var part;
-    var separator;
-    for (var i = 0, l = path.length; i < l; i++) {
-        part = path[i];
-        separator = i > 0 ? "." : "";
-        if (part === null) {
-            str.push('[]');
-        }
-        else if (typeof part === 'number') {
-            str.push('[' + part + ']');
-        }
-        else {
-            str.push(separator + part);
-        }
-    }
-    return str.join('');
+    return path.join('.');
+    // let str: string[] = [];
+    // let part: string | number;
+    // let separator: string;
+    // for (var i=0, l=path.length; i<l; i++) {
+    //   part = path[i];
+    //   separator = i > 0 ? "." : "";
+    //   if (part === null) {
+    //     str.push('[]')
+    //   } else if(typeof part === 'number'){
+    //     str.push('['+part+']')
+    //   } else {
+    //     str.push(separator + part)
+    //   }
+    // }
+    // return str.join('')
 }
 exports.stringify = stringify;
