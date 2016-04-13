@@ -93,7 +93,7 @@ export class Model implements IModel {
           })
           .then((data) => {
             data = _.assign(data, this._data);
-            return this.test(data)
+            return this.test(data, {properties: {_id: null}})
               .then((testResult: Error) => {
                 if (testResult !== null) {
                   return Promise.reject(testResult);

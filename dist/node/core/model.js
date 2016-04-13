@@ -55,11 +55,7 @@ var Model = (function () {
         return Promise.try(function () {
             var date = new Date();
             var data = {
-                _id: _this.getId(),
-                _rev: "1",
-                _type: _this._name,
-                _created: date,
-                _tested: date
+                _type: _this._name
             };
             return data;
         });
@@ -80,7 +76,7 @@ var Model = (function () {
             })
                 .then(function (data) {
                 data = _.assign(data, _this._data);
-                return _this.test(data)
+                return _this.test(data, { properties: { _id: null } })
                     .then(function (testResult) {
                     if (testResult !== null) {
                         return Promise.reject(testResult);
@@ -228,8 +224,7 @@ var Model = (function () {
             return Promise.reject(new Error("Object is not created"));
         }
         return Promise
-            .join(// TODO: .join<Model> once the definitions is fixed
-        this.diff(), this.getProxy(), this.getSchema(), function (diff, proxy, schema) {
+            .join(this.diff(), this.getProxy(), this.getSchema(), function (diff, proxy, schema) {
             if (diff === null) {
                 return Promise.resolve(_this);
             }
