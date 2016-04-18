@@ -1,17 +1,16 @@
-import {Dictionary} from "via-core";
-import {StaticModel} from "./interfaces";
+import {utils, model} from "via-core";
 import * as _ from "lodash";
 
 export class ModelsGroup {
-  private _modelClasses: Dictionary<StaticModel> = {};
+  private _modelClasses: utils.Dictionary<model.StaticModel> = {};
 
-  getModelClass (model: string | StaticModel, ensureExists: boolean): StaticModel {
-    let res: StaticModel = null;
+  getModelClass (model: string | model.StaticModel, ensureExists: boolean): model.StaticModel {
+    let res: model.StaticModel = null;
     if (_.isString(model)) {
       res = this._modelClasses[model] || null;
     } else {
       // TODO: check if it is really a StaticModel
-      res = <StaticModel> model;
+      res = <model.StaticModel> model;
     }
 
     if (ensureExists !== false && res === null) {
@@ -21,7 +20,7 @@ export class ModelsGroup {
     return res;
   }
 
-  setModelClass (name: string, ctor: StaticModel, opt?: any): StaticModel {
+  setModelClass (name: string, ctor: model.StaticModel, opt?: any): model.StaticModel {
     opt = _.assign({}, opt);
 
     // Model.generateAccessors(ctor)

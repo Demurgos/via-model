@@ -1,9 +1,8 @@
-import {Proxy} from "via-core";
-import {Cursor, Dictionary, UpdateResult} from "via-core";
+import {utils, proxy} from "via-core";
 
 export class MockDatabase {
   data: any[];
-  index: Dictionary<any>;
+  index: utils.Document;
 
   create (doc: Object): Object {
     let jsonDoc = MockDatabase.jsonClone(doc);
@@ -12,7 +11,7 @@ export class MockDatabase {
     return MockDatabase.jsonClone(jsonDoc);
   }
 
-  read (): Cursor {
+  read (): proxy.Cursor {
     let data = MockDatabase.jsonClone(this.data);
     return {
       toArray: () => {
@@ -21,7 +20,7 @@ export class MockDatabase {
     }
   }
 
-  update (): UpdateResult {
+  update (): proxy.UpdateResult {
     return {updateCount: 0};
   }
 
@@ -37,5 +36,4 @@ export class MockDatabase {
   private static jsonClone(data: any): any {
     return JSON.parse(JSON.stringify(data));
   }
-
 }

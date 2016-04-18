@@ -1,11 +1,11 @@
 "use strict";
-var Promise = require("bluebird");
+var Bluebird = require("bluebird");
 var _ = require("lodash");
+var via_core_1 = require("via-core");
 var helpers_1 = require("./helpers");
-var objectPath = require("./object-path");
 var Model = (function () {
     function Model() {
-        this._name = "model";
+        this._name = "via-model";
         this._defaultProxy = null;
         this._schema = null;
         this._ = this;
@@ -21,27 +21,30 @@ var Model = (function () {
     Model.prototype.getId = function () {
         return this._id;
     };
+    Model.prototype.getName = function () {
+        return this._name;
+    };
     Model.prototype.getToken = function () {
         var id = this.getId();
         return id === null ? null : { _id: id, _name: this._name };
     };
     Model.prototype.getProxy = function (options) {
         if ("proxy" in options && options.proxy) {
-            return Promise.resolve(options.proxy);
+            return Bluebird.resolve(options.proxy);
         }
         else if (this._defaultProxy) {
-            return Promise.resolve(this._defaultProxy);
+            return Bluebird.resolve(this._defaultProxy);
         }
         else {
-            return Promise.reject(new Error("Unable to aquire proxy"));
+            return Bluebird.reject(new Error("Unable to aquire proxy"));
         }
     };
     Model.prototype.exists = function (options) {
         if (this.getId() === null) {
-            return Promise.resolve(false);
+            return Bluebird.resolve(false);
         }
         else if (options.strict === false) {
-            return Promise.resolve(true);
+            return Bluebird.resolve(true);
         }
         else {
             // TODO: Support exists
@@ -52,7 +55,7 @@ var Model = (function () {
     };
     Model.prototype.getDefaultData = function (options) {
         var _this = this;
-        return Promise.try(function () {
+        return Bluebird.try(function () {
             var date = new Date();
             var data = {
                 _type: _this._name
@@ -70,7 +73,7 @@ var Model = (function () {
                 .exists({ strict: false, proxy: proxy })
                 .then(function (exists) {
                 if (exists) {
-                    return Promise.reject(new Error("Cannot create, Model already exists"));
+                    return Bluebird.reject(new Error("Cannot create, Model already exists"));
                 }
                 return _this.getDefaultData();
             })
@@ -79,7 +82,7 @@ var Model = (function () {
                 return _this.test(data, { properties: { _id: null } })
                     .then(function (testResult) {
                     if (testResult !== null) {
-                        return Promise.reject(testResult);
+                        return Bluebird.reject(testResult);
                     }
                 })
                     .thenReturn(data);
@@ -109,10 +112,8 @@ var Model = (function () {
     Model.prototype.updateOneLocal = function (path, value, opt) {
         var _this = this;
         opt = opt || {};
-        return Promise.try(function () {
-            var parsedPath = objectPath.parse(path);
-            objectPath.set(_this._data, path, value);
-            // this._updatedProperties.push(<string> parsedPath[0]);
+        return Bluebird.try(function () {
+            via_core_1.dotPath.set(_this._data, path, value);
             return _this;
         });
     };
@@ -121,7 +122,7 @@ var Model = (function () {
         var cached = {};
         var missing = [];
         _.forEach(fields, function (field) {
-            var parsed = objectPath.parse(field);
+            var parsed = via_core_1.dotPath.parse(field);
             var curPath = [];
             var curValue = _this._data;
             while (parsed.length) {
@@ -162,7 +163,7 @@ var Model = (function () {
                 .getProxy()
                 .then(function (proxy) { return proxy.format; });
         }
-        return Promise
+        return Bluebird
             .join(this.getSchema(), format, function (schema, format) {
             return schema
                 .read(format, data);
@@ -174,7 +175,7 @@ var Model = (function () {
                 .getProxy()
                 .then(function (proxy) { return proxy.format; });
         }
-        return Promise
+        return Bluebird
             .join(this.getSchema(), format, function (schema, format) {
             return schema
                 .write(format, data);
@@ -200,7 +201,7 @@ var Model = (function () {
     Model.prototype.diff = function () {
         var _this = this;
         if (this._oldData === null) {
-            return Promise.resolve(null);
+            return Bluebird.resolve(null);
         }
         return this
             .getSchema()
@@ -209,7 +210,7 @@ var Model = (function () {
                 .equals(_this._data, _this._oldData)
                 .then(function (equals) {
                 if (equals) {
-                    return Promise.resolve(null);
+                    return Bluebird.resolve(null);
                 }
                 return schema
                     .diff(_this._oldData, _this._data);
@@ -221,12 +222,12 @@ var Model = (function () {
         options = options || {};
         var id = this.getId();
         if (id === null) {
-            return Promise.reject(new Error("Object is not created"));
+            return Bluebird.reject(new Error("Object is not created"));
         }
-        return Promise
+        return Bluebird
             .join(this.diff(), this.getProxy(), this.getSchema(), function (diff, proxy, schema) {
             if (diff === null) {
-                return Promise.resolve(_this);
+                return Bluebird.resolve(_this);
             }
             return schema
                 .diffToUpdate(_this._data, diff, proxy.format)
@@ -245,9 +246,9 @@ var Model = (function () {
         var local = this.readLocal(paths);
         var data = local.data;
         if (local.missing.length === 0) {
-            return Promise.resolve(data);
+            return Bluebird.resolve(data);
         }
-        var parsedMissing = local.missing.map(objectPath.parse);
+        var parsedMissing = local.missing.map(via_core_1.dotPath.parse);
         return this
             .load(parsedMissing) // TODO: option strict: check if data is loaded
             .then(function () {
@@ -259,7 +260,7 @@ var Model = (function () {
         return this
             .get([path])
             .then(function (data) {
-            return objectPath.get(data, path);
+            return via_core_1.dotPath.get(data, path);
         });
     };
     Model.prototype.set = function (query, opt) {
@@ -270,25 +271,25 @@ var Model = (function () {
             .then(function (res) {
             // TODO: remove this test ?
             if (res !== null) {
-                return Promise.reject(res);
+                return Bluebird.reject(res);
             }
-            return Promise
+            return Bluebird
                 .all(_.map(query, function (value, field) {
-                return _this.updateOneLocal(objectPath.parse(field), value);
+                return _this.updateOneLocal(via_core_1.dotPath.parse(field), value);
             }));
         })
             .then(function () {
             // TODO: remove this option (commit must be explicitly called)
-            return opt.commit ? _this.commit(opt) : Promise.resolve(_this);
+            return opt.commit ? _this.commit(opt) : Bluebird.resolve(_this);
         });
     };
     Model.prototype.setOne = function (path, value, opt) {
         var query = {};
-        query[objectPath.stringify(path)] = value;
+        query[via_core_1.dotPath.stringify(path)] = value;
         return this.set(query, opt);
     };
     Model.prototype.getSchema = function () {
-        return this._schema !== null ? Promise.resolve(this._schema) : Promise.reject("Schema is not defined !");
+        return this._schema !== null ? Bluebird.resolve(this._schema) : Bluebird.reject("Schema is not defined !");
     };
     Model.prototype.test = function (query, opt) {
         return this.getSchema()
@@ -298,7 +299,7 @@ var Model = (function () {
     };
     Model.prototype.testOne = function (field, val, opt) {
         var query = {};
-        query[objectPath.stringify(field)] = val;
+        query[via_core_1.dotPath.stringify(field)] = val;
         return this.test(query, opt);
     };
     Model.prototype.ensureValid = function () {
@@ -339,9 +340,9 @@ function getNewSync(ctor, opt) {
 exports.getNewSync = getNewSync;
 function getNew(ctor, opt) {
     opt = _.assign({ data: null, commit: false }, opt);
-    return Promise.try(function () { return getNewSync(ctor, opt); })
+    return Bluebird.try(function () { return getNewSync(ctor, opt); })
         .then(function (model) {
-        return opt.commit ? model.commit(opt) : Promise.resolve(model);
+        return opt.commit ? model.commit(opt) : Bluebird.resolve(model);
     });
 }
 exports.getNew = getNew;
@@ -356,10 +357,10 @@ function getByIdSync(ctor, id, opt) {
 exports.getByIdSync = getByIdSync;
 function getById(ctor, id, opt) {
     opt = _.assign({ data: null, ensureExists: false }, opt);
-    return Promise.try(function () { return getByIdSync(ctor, id, opt); })
+    return Bluebird.try(function () { return getByIdSync(ctor, id, opt); })
         .then(function (model) {
         if (!opt.ensureExists) {
-            return Promise.resolve(model);
+            return Bluebird.resolve(model);
         }
         return model
             .exists({ strict: true })
@@ -374,10 +375,9 @@ function getById(ctor, id, opt) {
 exports.getById = getById;
 function find(ctor, filter, opt) {
     opt = _.defaults(opt || {}, { proxy: null });
-    return Promise.resolve(opt.proxy)
+    return Bluebird.resolve(opt.proxy)
         .then(function (proxy) {
-        return proxy
-            .read(filter)
+        return Bluebird.resolve(proxy.read(filter))
             .then(function (cursor) {
             return cursor.toArray();
         })

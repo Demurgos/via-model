@@ -1,24 +1,20 @@
-import * as Promise from "bluebird";
+import * as Bluebird from "bluebird";
 import * as _ from "lodash";
 
+import {model, proxy, schema, utils, dotPath, type} from "via-core";
+
 import {deepMerge} from "./helpers";
-import * as objectPath from "./object-path";
-import {ModelToken, Query, ModelConstructor} from "./interfaces";
-import {Proxy, ViaSchema, Dictionary} from "via-core";
-import {IModel, StaticModel, FindOptions} from "./interfaces";
-import {GetProxyOptions, ExistsOptions, CommitOptions, LoadOptions, ReadLocalResult} from "./interfaces";
-import {Cursor, DocumentDiff, UpdateQuery} from "via-core";
 import {ModelsGroup} from "./models-group";
 
-export class Model implements IModel {
-  public _name: string = "model";
+export class Model implements model.Model {
   public _: Model; // self-reference
 
+  protected _name: string = "via-model";
   protected _id: string;
   protected _data: any;
   protected _oldData: any;
-  protected _defaultProxy: Proxy = null;
-  protected _schema: ViaSchema = null;
+  protected _defaultProxy: proxy.Proxy = null;
+  protected _schema: schema.ViaModelSchema = null;
 
   constructor () {
     this._ = this;
@@ -38,26 +34,30 @@ export class Model implements IModel {
     return this._id;
   }
 
-  getToken (): ModelToken {
+  getName (): string {
+    return this._name;
+  }
+
+  getToken (): model.ModelToken {
     let id = this.getId();
     return id === null ? null : {_id: id, _name: this._name};
   }
 
-  getProxy (options?: GetProxyOptions): Promise<Proxy> {
+  getProxy (options?: model.GetProxyOptions): Bluebird<proxy.Proxy> {
     if ("proxy" in options && options.proxy) {
-      return Promise.resolve(options.proxy);
+      return Bluebird.resolve(options.proxy);
     } else if (this._defaultProxy) {
-      return Promise.resolve(this._defaultProxy);
+      return Bluebird.resolve(this._defaultProxy);
     } else {
-      return Promise.reject(new Error("Unable to aquire proxy"));
+      return Bluebird.reject(new Error("Unable to aquire proxy"));
     }
   }
 
-  exists (options: ExistsOptions): Promise<boolean> {
+  exists (options: model.ExistsOptions): Bluebird<boolean> {
     if (this.getId() === null) {
-      return Promise.resolve(false);
+      return Bluebird.resolve(false);
     } else if (options.strict === false) {
-      return Promise.resolve(true);
+      return Bluebird.resolve(true);
     } else {
       // TODO: Support exists
       return this
@@ -67,8 +67,8 @@ export class Model implements IModel {
     }
   }
 
-  getDefaultData (options?: any): Promise<any> {
-    return Promise.try(() => {
+  getDefaultData (options?: any): Bluebird<any> {
+    return Bluebird.try(() => {
       let date = new Date();
       let data = {
         _type: this._name
@@ -77,17 +77,17 @@ export class Model implements IModel {
     });
   }
 
-  create (options?: any): Promise<Model> {
+  create (options?: any): Bluebird<Model> {
     options = _.assign({}, options);
 
     return this
       .getProxy(options)
-      .then((proxy: Proxy) => {
+      .then((proxy: proxy.Proxy) => {
         return this
           .exists({strict: false, proxy: proxy})
           .then((exists) => {
             if (exists) {
-              return Promise.reject(new Error("Cannot create, Model already exists"));
+              return Bluebird.reject(new Error("Cannot create, Model already exists"));
             }
             return this.getDefaultData();
           })
@@ -96,7 +96,7 @@ export class Model implements IModel {
             return this.test(data, {properties: {_id: null}})
               .then((testResult: Error) => {
                 if (testResult !== null) {
-                  return Promise.reject(testResult);
+                  return Bluebird.reject(testResult);
                 }
               })
               .thenReturn(data);
@@ -121,29 +121,27 @@ export class Model implements IModel {
   }
 
   // Use objectPath ?
-  updateLocal (data: Dictionary<any>): Model {
+  updateLocal (data: utils.Document): Model {
     this._data = deepMerge(this._data, data, false); // TODO: test with arrays
     return this;
   }
 
-  updateOneLocal (path: objectPath.ObjectPath, value: any, opt?: any): Promise<Model> {
+  updateOneLocal (path: dotPath.DotPath, value: any, opt?: any): Bluebird<Model> {
     opt = opt || {};
 
-    return Promise.try(() => {
-      let parsedPath = objectPath.parse(<any> path);
-      objectPath.set(this._data, path, value);
-      // this._updatedProperties.push(<string> parsedPath[0]);
+    return Bluebird.try(() => {
+      dotPath.set(this._data, path, value);
       return this;
     });
   }
 
-  readLocal (fields: objectPath.ObjectPath[]): ReadLocalResult {
+  readLocal (fields: dotPath.DotPath[]): model.ReadLocalResult {
     let cached: any = {};
-    let missing: objectPath.ObjectPath[] = [];
+    let missing: dotPath.DotPath[] = [];
 
     _.forEach(fields, (field) => {
-      let parsed: objectPath.ObjectPath = objectPath.parse(field);
-      let curPath: objectPath.ObjectPath = [];
+      let parsed: dotPath.ParsedDotPath = dotPath.parse(field);
+      let curPath: dotPath.ParsedDotPath = [];
       let curValue: any = this._data;
 
       while (parsed.length) {
@@ -168,7 +166,7 @@ export class Model implements IModel {
     return this;
   }
 
-  load (fields: objectPath.ObjectPath[], getProxyOptions?: LoadOptions) {
+  load (fields: dotPath.DotPath[], getProxyOptions?: model.LoadOptions) {
     // check if updated is empty, warn otherwise
     return this
       .getProxy(getProxyOptions)
@@ -181,43 +179,43 @@ export class Model implements IModel {
       })
   }
 
-  decode (data: any, format: string | Promise<string>): Promise<any> {
+  decode (data: any, format: string | Bluebird<string>): Bluebird<any> {
     if (_.isUndefined(format)) {
       format = this
         .getProxy()
-        .then<string>((proxy: Proxy) => proxy.format);
+        .then<string>((proxy: proxy.Proxy) => proxy.format);
     }
 
-    return Promise
+    return Bluebird
       .join(
         this.getSchema(),
         format,
-        (schema: ViaSchema, format: string) => {
+        (schema: schema.ViaModelSchema, format: string) => {
           return schema
             .read(format, data);
         }
       );
   }
 
-  encode (data: any, format: string | Promise<string>): Promise<any> {
+  encode (data: any, format: string | Bluebird<string>): Bluebird<any> {
     if (_.isUndefined(format)) {
       format = this
         .getProxy()
-        .then<string>((proxy: Proxy) => proxy.format);
+        .then<string>((proxy: proxy.Proxy) => proxy.format);
     }
 
-    return Promise
+    return Bluebird
       .join(
         this.getSchema(),
         format,
-        (schema: ViaSchema, format: string) => {
+        (schema: schema.ViaModelSchema, format: string) => {
           return schema
             .write(format, data);
         }
       );
   }
 
-  importData (data: any, format: string): Promise<Model> {
+  importData (data: any, format: string): Bluebird<Model> {
     return this
       .decode(data, format)
       .then((data) => {
@@ -225,7 +223,7 @@ export class Model implements IModel {
       });
   }
 
-  exportData (paths: objectPath.ObjectPath[], format: string): Promise<any> {
+  exportData (paths: dotPath.DotPath[], format: string): Bluebird<any> {
     return this
       .get(paths)
       .then((data) => {
@@ -233,19 +231,19 @@ export class Model implements IModel {
       });
   };
 
-  diff(): Promise<DocumentDiff> {
+  diff(): Bluebird<type.DocumentDiff> {
     if (this._oldData === null) {
-      return Promise.resolve(<DocumentDiff> null);
+      return Bluebird.resolve(<type.DocumentDiff> null);
     }
 
     return this
       .getSchema()
-      .then((schema: ViaSchema) => {
+      .then((schema: schema.ViaModelSchema) => {
         return schema
           .equals(this._data, this._oldData)
           .then((equals: boolean) => {
             if (equals) {
-              return Promise.resolve(<DocumentDiff> null);
+              return Bluebird.resolve(<type.DocumentDiff> null);
             }
             return schema
               .diff(this._oldData, this._data);
@@ -253,26 +251,26 @@ export class Model implements IModel {
       })
   }
 
-  commit (options?: CommitOptions): Promise<Model> {
+  commit (options?: model.CommitOptions): Bluebird<Model> {
     options = options || {};
 
     let id = this.getId();
     if (id === null) {
-      return Promise.reject(new Error("Object is not created"));
+      return Bluebird.reject(new Error("Object is not created"));
     }
 
-    return Promise
+    return Bluebird
       .join(
         this.diff(),
         this.getProxy(),
         this.getSchema(),
-        (diff: DocumentDiff, proxy:Proxy, schema:ViaSchema) => {
+        (diff: type.DocumentDiff, proxy: proxy.Proxy, schema: schema.ViaModelSchema) => {
           if (diff === null) {
-            return Promise.resolve(this);
+            return Bluebird.resolve(this);
           }
           return schema
             .diffToUpdate(this._data, diff, proxy.format)
-            .then((encodedUpdateQuery:UpdateQuery) => {
+            .then((encodedUpdateQuery: type.UpdateQuery) => {
               return proxy.updateById(id, "rev", encodedUpdateQuery); // TODO: track rev
             })
             .then((rawResponse) => {
@@ -284,15 +282,15 @@ export class Model implements IModel {
       .thenReturn(this);
   }
 
-  get (paths: objectPath.ObjectPath[]): Promise<any> {
+  get (paths: dotPath.DotPath[]): Bluebird<any> {
     let local = this.readLocal(paths);
     let data = local.data;
 
     if (local.missing.length === 0) {
-      return Promise.resolve(data);
+      return Bluebird.resolve(data);
     }
 
-    let parsedMissing: objectPath.ObjectPath[] = local.missing.map(objectPath.parse);
+    let parsedMissing: dotPath.ParsedDotPath[] = local.missing.map(dotPath.parse);
 
     return this
       .load(parsedMissing) // TODO: option strict: check if data is loaded
@@ -302,63 +300,63 @@ export class Model implements IModel {
       });
   }
 
-  getOne (path: objectPath.ObjectPath): Promise<any> {
+  getOne (path: dotPath.DotPath): Bluebird<any> {
     return this
       .get([path])
       .then((data) => {
-        return objectPath.get(data, path);
+        return dotPath.get(data, path);
       });
   }
 
-  set (query: Query, opt?: any): Promise<Model> {
+  set (query: type.UpdateQuery, opt?: any): Bluebird<Model> {
     opt = opt || {};
     return this
       .test(query, {throwError: true}) // TODO: use throwError option
       .then((res: Error) => {
         // TODO: remove this test ?
         if (res !== null) {
-          return Promise.reject(res);
+          return Bluebird.reject(res);
         }
 
-        return Promise
+        return Bluebird
           .all(
             _.map(query, (value: any, field: string) => {
-              return this.updateOneLocal(objectPath.parse(field), value);
+              return this.updateOneLocal(dotPath.parse(field), value);
             })
           );
       })
       .then(() => {
         // TODO: remove this option (commit must be explicitly called)
-        return opt.commit ? this.commit(opt) : Promise.resolve(this);
+        return opt.commit ? this.commit(opt) : Bluebird.resolve(this);
       });
   }
 
-  setOne (path: objectPath.ObjectPath, value: any, opt?: any): Promise<Model> {
-    let query: Dictionary<any> = {};
-    query[objectPath.stringify(path)] = value;
+  setOne (path: dotPath.DotPath, value: any, opt?: any): Bluebird<Model> {
+    let query: utils.Document = {};
+    query[dotPath.stringify(path)] = value;
     return this.set(query, opt);
   }
 
-  getSchema (): Promise<ViaSchema> {
-    return this._schema !== null ? Promise.resolve(this._schema) : Promise.reject("Schema is not defined !");
+  getSchema (): Bluebird<schema.ViaModelSchema> {
+    return this._schema !== null ? Bluebird.resolve(this._schema) : Bluebird.reject("Schema is not defined !");
   }
 
-  test (query: any, opt?: any): Promise<Error> {
+  test (query: any, opt?: any): Bluebird<Error> {
     return this.getSchema()
-      .then((schema: ViaSchema) => {
+      .then((schema: schema.ViaModelSchema) => {
         return schema.test(query); // TODO: add options {allowPartial: true};
       });
   }
 
-  testOne (field: objectPath.ObjectPath, val: any, opt?: any) {
-    var query: Dictionary<any> = {};
-    query[objectPath.stringify(field)] = val;
+  testOne (field: dotPath.DotPath, val: any, opt?: any) {
+    var query: utils.Document = {};
+    query[dotPath.stringify(field)] = val;
 
     return this.test(query, opt);
   }
 
-  ensureValid (): Promise<Model> {
-    return this.getSchema().then((schema: ViaSchema) => {
+  ensureValid (): Bluebird<Model> {
+    return this.getSchema().then((schema: schema.ViaModelSchema) => {
       return schema
         .test(this._data)
         .then(res => {
@@ -369,7 +367,7 @@ export class Model implements IModel {
   }
 
 
-  toPlain (paths: objectPath.ObjectPath[], opt?: any): any {
+  toPlain (paths: dotPath.DotPath[], opt?: any): any {
     return {};
     // if (fields === null) {
     //   fields = _.keys(self._data);
@@ -379,15 +377,15 @@ export class Model implements IModel {
     // return model._load(fields, opt);
   };
 
-  toJSON (): ModelToken {
+  toJSON (): model.ModelToken {
     return this.getToken();
   }
 }
 
-export function getNewSync (ctor: ModelConstructor, opt?: any): Model {
+export function getNewSync (ctor: model.ModelConstructor, opt?: any): model.Model {
   opt = _.assign({data: null}, opt);
 
-  let model: Model = new ctor();
+  let model: model.Model = new ctor();
 
   if (opt.data !== null) {
     model.updateLocal(opt.data);
@@ -396,16 +394,16 @@ export function getNewSync (ctor: ModelConstructor, opt?: any): Model {
   return model
 }
 
-export function getNew (ctor: ModelConstructor, opt?: any): Promise<Model> {
+export function getNew (ctor: model.ModelConstructor, opt?: any): Bluebird<Model> {
   opt = _.assign({data: null, commit: false}, opt);
 
-  return Promise.try(() => getNewSync(ctor, opt))
+  return Bluebird.try(() => getNewSync(ctor, opt))
     .then((model: Model) => {
-      return opt.commit ? model.commit(opt) : Promise.resolve(model);
+      return opt.commit ? model.commit(opt) : Bluebird.resolve(model);
     });
 }
 
-export function getByIdSync (ctor: ModelConstructor, id: string, opt?: any): Model {
+export function getByIdSync (ctor: model.ModelConstructor, id: string, opt?: any): model.Model {
   opt = _.assign({data: null}, opt);
 
   let model = new ctor({id: id});
@@ -415,13 +413,13 @@ export function getByIdSync (ctor: ModelConstructor, id: string, opt?: any): Mod
   return model;
 }
 
-export function getById (ctor: ModelConstructor, id: string, opt?: any): Promise<Model> {
+export function getById (ctor: model.ModelConstructor, id: string, opt?: any): Bluebird<Model> {
   opt = _.assign({data: null, ensureExists: false}, opt)
   
-  return Promise.try(() => getByIdSync(ctor, id, opt))
+  return Bluebird.try(() => getByIdSync(ctor, id, opt))
     .then((model: Model) => {
       if (!opt.ensureExists) {
-        return Promise.resolve(model);
+        return Bluebird.resolve(model);
       }
       return model
         .exists({strict: true})
@@ -434,14 +432,13 @@ export function getById (ctor: ModelConstructor, id: string, opt?: any): Promise
     });
 }
 
-export function find (ctor: ModelConstructor, filter: Object, opt?: FindOptions): Promise<Model[]> {
+export function find (ctor: model.ModelConstructor, filter: Object, opt?: model.FindOptions): Bluebird<Model[]> {
   opt = _.defaults(opt || {}, {proxy: null});
 
-return Promise.resolve(opt.proxy)
-  .then((proxy: Proxy) => {
-    return proxy
-      .read(filter)
-      .then((cursor: Cursor) => {
+return Bluebird.resolve(opt.proxy)
+  .then((proxy: proxy.Proxy) => {
+    return Bluebird.resolve(proxy.read(filter))
+      .then((cursor: proxy.Cursor) => {
         return cursor.toArray();
       })
       .map((doc: any, index: number, length: number) => {
@@ -451,8 +448,8 @@ return Promise.resolve(opt.proxy)
   });
 }
 
-export function cast(list: any[], modelsGroup: ModelsGroup): Model[] {
-  let res: Model[] = [];
+export function cast(list: any[], modelsGroup: ModelsGroup): model.Model[] {
+  let res: model.Model[] = [];
   for(let i = 0, l = list.length; i<l; i++){
     let cur = list[i];
     let ctor = modelsGroup.getModelClass(cur._name, true);
@@ -462,7 +459,7 @@ export function cast(list: any[], modelsGroup: ModelsGroup): Model[] {
 }
 
 // TODO(Charles): fix ?
-export function castOne(token: ModelToken, modelsGroup: ModelsGroup): any {
+export function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any {
   if (token === null) {
     return null;
   }
@@ -470,8 +467,8 @@ export function castOne(token: ModelToken, modelsGroup: ModelsGroup): any {
   return getByIdSync(ctor, token._id, {}); // updateLocal ?
 }
 
-export function generateAccessors (ctor: ModelConstructor): StaticModel {
-  let tmpCtor = <StaticModel> ctor;
+export function generateAccessors (ctor: model.ModelConstructor): model.StaticModel {
+  let tmpCtor = <model.StaticModel> ctor;
   tmpCtor.getNewSync = function(opt){
     return getNewSync(ctor, opt)
   };
@@ -480,15 +477,15 @@ export function generateAccessors (ctor: ModelConstructor): StaticModel {
     return getNew(ctor, options);
   };
 
-  tmpCtor.getByIdSync = function(id, opt){
+  tmpCtor.getByIdSync = function(id: string, opt?: any){
     return getByIdSync(ctor, id, opt);
   };
 
-  tmpCtor.getById = function(id, opt){
+  tmpCtor.getById = function(id: string, opt?: any){
     return getById(ctor, id, opt);
   };
 
-  tmpCtor.find = function(filter: Object, options?: FindOptions){
+  tmpCtor.find = function(filter: utils.Document, options?: model.FindOptions){
     return find(ctor, filter, options);
   };
 

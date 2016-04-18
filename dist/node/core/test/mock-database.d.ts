@@ -1,10 +1,10 @@
-import { Cursor, Dictionary, UpdateResult } from "via-core";
+import { utils, proxy } from "via-core";
 export declare class MockDatabase {
     data: any[];
-    index: Dictionary<any>;
+    index: utils.Document;
     create(doc: Object): Object;
-    read(): Cursor;
-    update(): UpdateResult;
+    read(): proxy.Cursor;
+    update(): proxy.UpdateResult;
     clear(): MockDatabase;
     private static nextId;
     private static generateId();

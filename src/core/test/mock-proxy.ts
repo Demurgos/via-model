@@ -1,8 +1,8 @@
 import * as Promise from "bluebird";
-import {Proxy, ViaSchema, ReadOptions, UpdateOptions, UpdateOneOptions, Cursor, UpdateResult} from "via-core";
+import {proxy, schema} from "via-core";
 import {MockDatabase} from "./mock-database";
 
-export class MockProxy implements Proxy {
+export class MockProxy implements proxy.Proxy {
   format: string;
   db: MockDatabase;
 
@@ -11,7 +11,7 @@ export class MockProxy implements Proxy {
     this.db = db;
   }
 
-  build(schema: ViaSchema): Promise<void> {
+  build(schema: schema.ViaModelSchema): Promise<void> {
     return Promise.resolve();
   }
 
@@ -21,19 +21,19 @@ export class MockProxy implements Proxy {
     });
   }
 
-  read(filter: Object, options?: ReadOptions): Promise<Cursor> {
+  read(filter: Object, options?: proxy.ReadOptions): Promise<proxy.Cursor> {
     return undefined;
   }
 
-  readById(id: string, options?: ReadOptions): Promise<Object> {
+  readById(id: string, options?: proxy.ReadOptions): Promise<Object> {
     return undefined;
   }
 
-  update(filter: Document, update: Object, options?: UpdateOptions): Promise<UpdateResult> {
+  update(filter: Document, update: Object, options?: proxy.UpdateOptions): Promise<proxy.UpdateResult> {
     return undefined;
   }
 
-  updateById(id: string, rev: string, update: Object, options?: UpdateOneOptions): Promise<UpdateResult> {
+  updateById(id: string, rev: string, update: Object, options?: proxy.UpdateOneOptions): Promise<proxy.UpdateResult> {
     return undefined;
   }
 
