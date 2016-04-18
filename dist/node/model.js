@@ -56,9 +56,8 @@ var Model = (function () {
     Model.prototype.getDefaultData = function (options) {
         var _this = this;
         return Bluebird.try(function () {
-            var date = new Date();
             var data = {
-                _type: _this._name
+                _name: _this._name
             };
             return data;
         });
@@ -166,7 +165,7 @@ var Model = (function () {
         return Bluebird
             .join(this.getSchema(), format, function (schema, format) {
             return schema
-                .read(format, data);
+                .read(format, data, { allowPartial: true });
         });
     };
     Model.prototype.encode = function (data, format) {
@@ -398,7 +397,6 @@ function cast(list, modelsGroup) {
     return res;
 }
 exports.cast = cast;
-// TODO(Charles): fix ?
 function castOne(token, modelsGroup) {
     if (token === null) {
         return null;

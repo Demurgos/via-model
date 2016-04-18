@@ -1,16 +1,16 @@
 "use strict";
-var Promise = require("bluebird");
+var Bluebird = require("bluebird");
 var MockProxy = (function () {
     function MockProxy(db) {
         this.format = "json";
         this.db = db;
     }
     MockProxy.prototype.build = function (schema) {
-        return Promise.resolve();
+        return Bluebird.resolve();
     };
     MockProxy.prototype.create = function (data) {
         var _this = this;
-        return Promise.try(function () {
+        return Bluebird.try(function () {
             return _this.db.create(data);
         });
     };

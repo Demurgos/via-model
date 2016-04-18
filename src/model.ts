@@ -69,9 +69,8 @@ export class Model implements model.Model {
 
   getDefaultData (options?: any): Bluebird<any> {
     return Bluebird.try(() => {
-      let date = new Date();
       let data = {
-        _type: this._name
+        _name: this._name
       };
       return data;
     });
@@ -192,7 +191,7 @@ export class Model implements model.Model {
         format,
         (schema: schema.ViaModelSchema, format: string) => {
           return schema
-            .read(format, data);
+            .read(format, data, {allowPartial: true});
         }
       );
   }
@@ -308,7 +307,7 @@ export class Model implements model.Model {
       });
   }
 
-  set (query: type.UpdateQuery, opt?: any): Bluebird<Model> {
+  set (query: utils.Document, opt?: any): Bluebird<Model> {
     opt = opt || {};
     return this
       .test(query, {throwError: true}) // TODO: use throwError option
@@ -435,17 +434,17 @@ export function getById (ctor: model.ModelConstructor, id: string, opt?: any): B
 export function find (ctor: model.ModelConstructor, filter: Object, opt?: model.FindOptions): Bluebird<Model[]> {
   opt = _.defaults(opt || {}, {proxy: null});
 
-return Bluebird.resolve(opt.proxy)
-  .then((proxy: proxy.Proxy) => {
-    return Bluebird.resolve(proxy.read(filter))
-      .then((cursor: proxy.Cursor) => {
-        return cursor.toArray();
-      })
-      .map((doc: any, index: number, length: number) => {
-        return getById(ctor, doc._id)
-          .then(model => model.importData(doc, proxy.format));
-      });
-  });
+  return Bluebird.resolve(opt.proxy)
+    .then((proxy: proxy.Proxy) => {
+      return Bluebird.resolve(proxy.read(filter))
+        .then((cursor: proxy.Cursor) => {
+          return cursor.toArray();
+        })
+        .map((doc: any, index: number, length: number) => {
+          return getById(ctor, doc._id)
+            .then(model => model.importData(doc, proxy.format));
+        });
+    });
 }
 
 export function cast(list: any[], modelsGroup: ModelsGroup): model.Model[] {
@@ -458,7 +457,6 @@ export function cast(list: any[], modelsGroup: ModelsGroup): model.Model[] {
   return res;
 }
 
-// TODO(Charles): fix ?
 export function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any {
   if (token === null) {
     return null;
@@ -467,10 +465,22 @@ export function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any 
   return getByIdSync(ctor, token._id, {}); // updateLocal ?
 }
 
-export function generateAccessors (ctor: model.ModelConstructor): model.StaticModel {
-  let tmpCtor = <model.StaticModel> ctor;
+export interface ModelConstructor extends model.ModelConstructor {
+  new (options?: any): Model;
+}
+
+export interface StaticModel extends ModelConstructor, model.StaticModel {
+  getNewSync (opt?: any): Model;
+  getNew (opt?: any): Bluebird<Model>;
+  getByIdSync (id: string, opt?: any): Model;
+  getById (id: string, opt?: any): Bluebird<Model>;
+  find (filter: Object, opt?: model.FindOptions): Bluebird<Model[]>;
+}
+
+export function generateAccessors (ctor: ModelConstructor): StaticModel {
+  let tmpCtor = <StaticModel> ctor;
   tmpCtor.getNewSync = function(opt){
-    return getNewSync(ctor, opt)
+    return <Model> getNewSync(ctor, opt);
   };
 
   tmpCtor.getNew = function(options?: any) {
@@ -478,7 +488,7 @@ export function generateAccessors (ctor: model.ModelConstructor): model.StaticMo
   };
 
   tmpCtor.getByIdSync = function(id: string, opt?: any){
-    return getByIdSync(ctor, id, opt);
+    return <Model> getByIdSync(ctor, id, opt);
   };
 
   tmpCtor.getById = function(id: string, opt?: any){

@@ -31,7 +31,7 @@ export declare class Model implements model.Model {
     commit(options?: model.CommitOptions): Bluebird<Model>;
     get(paths: dotPath.DotPath[]): Bluebird<any>;
     getOne(path: dotPath.DotPath): Bluebird<any>;
-    set(query: type.UpdateQuery, opt?: any): Bluebird<Model>;
+    set(query: utils.Document, opt?: any): Bluebird<Model>;
     setOne(path: dotPath.DotPath, value: any, opt?: any): Bluebird<Model>;
     getSchema(): Bluebird<schema.ViaModelSchema>;
     test(query: any, opt?: any): Bluebird<Error>;
@@ -47,4 +47,14 @@ export declare function getById(ctor: model.ModelConstructor, id: string, opt?: 
 export declare function find(ctor: model.ModelConstructor, filter: Object, opt?: model.FindOptions): Bluebird<Model[]>;
 export declare function cast(list: any[], modelsGroup: ModelsGroup): model.Model[];
 export declare function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any;
-export declare function generateAccessors(ctor: model.ModelConstructor): model.StaticModel;
+export interface ModelConstructor extends model.ModelConstructor {
+    new (options?: any): Model;
+}
+export interface StaticModel extends ModelConstructor, model.StaticModel {
+    getNewSync(opt?: any): Model;
+    getNew(opt?: any): Bluebird<Model>;
+    getByIdSync(id: string, opt?: any): Model;
+    getById(id: string, opt?: any): Bluebird<Model>;
+    find(filter: Object, opt?: model.FindOptions): Bluebird<Model[]>;
+}
+export declare function generateAccessors(ctor: ModelConstructor): StaticModel;

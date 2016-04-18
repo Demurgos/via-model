@@ -1,4 +1,4 @@
-import * as Promise from "bluebird";
+import * as Bluebird from "bluebird";
 import {defineProperty} from "./helpers";
 import {Model} from "./model";
 
