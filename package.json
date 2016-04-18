@@ -2,7 +2,7 @@
   "name": "via-model",
   "version": "0.1.1",
   "description": "Document oriented models",
-  "main": "dist/node/node/main.js",
+  "main": "dist/node/main.js",
   "repository": {
     "type": "git",
     "url": "git://github.com/demurgos/via-model.git"
@@ -19,7 +19,7 @@
     "chai": "^3.4.1",
     "gulp": "^3.9.0",
     "typescript": "^1.8.0-dev.20160125",
-    "via-build-tools": "^0.7.6"
+    "via-build-tools": "^0.8.2"
   },
   "jspm": {
     "configFile": "systemjs.config.js",
