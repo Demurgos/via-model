@@ -1,6 +1,6 @@
 {
   "name": "via-model",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Document oriented models",
   "main": "dist/node/main.js",
   "repository": {
