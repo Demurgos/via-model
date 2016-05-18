@@ -11,10 +11,15 @@
     "test": "gulp test"
   },
   "keywords": [
-    "orm"
+    "odm"
   ],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "bluebird": "^3.4.0",
+    "lodash": "^4.0.0",
+    "via-core": "^0.4.2"
+  },
   "devDependencies": {
     "chai": "^3.4.1",
     "gulp": "^3.9.0",
@@ -27,10 +32,5 @@
       "lodash": "npm:lodash@^4.0.0"
     },
     "devDependencies": {}
-  },
-  "dependencies": {
-    "bluebird": "^3.4.0",
-    "lodash": "^4.0.0",
-    "via-core": "^0.4.2"
   }
 }
