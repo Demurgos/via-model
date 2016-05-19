@@ -468,27 +468,29 @@ export function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any 
 }
 
 export function StaticAccessors(): ClassDecorator {
-  return function generateAccessors<TFunction extends StaticModel>(ctor: TFunction): TFunction {
-    ctor.getNewSync = function(opt){
-      return <Model> getNewSync(ctor, opt);
-    };
+  return generateAccessors;
+}
 
-    ctor.getNew = function(options?: any) {
-      return getNew(ctor, options);
-    };
+export function generateAccessors<T extends StaticModel>(ctor: T): T {
+  ctor.getNewSync = function(opt){
+    return <Model> getNewSync(ctor, opt);
+  };
 
-    ctor.getByIdSync = function(id: string, opt?: any){
-      return <Model> getByIdSync(ctor, id, opt);
-    };
+  ctor.getNew = function(options?: any) {
+    return getNew(ctor, options);
+  };
 
-    ctor.getById = function(id: string, opt?: any){
-      return getById(ctor, id, opt);
-    };
+  ctor.getByIdSync = function(id: string, opt?: any){
+    return <Model> getByIdSync(ctor, id, opt);
+  };
 
-    ctor.find = function(filter: utils.Document, options?: model.FindOptions){
-      return find(ctor, filter, options);
-    };
+  ctor.getById = function(id: string, opt?: any){
+    return getById(ctor, id, opt);
+  };
 
-    return ctor;
-  }
+  ctor.find = function(filter: utils.Document, options?: model.FindOptions){
+    return find(ctor, filter, options);
+  };
+
+  return ctor;
 }

@@ -405,23 +405,26 @@ function castOne(token, modelsGroup) {
     return getByIdSync(ctor, token._id, {}); // updateLocal ?
 }
 exports.castOne = castOne;
+function StaticAccessors() {
+    return generateAccessors;
+}
+exports.StaticAccessors = StaticAccessors;
 function generateAccessors(ctor) {
-    var tmpCtor = ctor;
-    tmpCtor.getNewSync = function (opt) {
+    ctor.getNewSync = function (opt) {
         return getNewSync(ctor, opt);
     };
-    tmpCtor.getNew = function (options) {
+    ctor.getNew = function (options) {
         return getNew(ctor, options);
     };
-    tmpCtor.getByIdSync = function (id, opt) {
+    ctor.getByIdSync = function (id, opt) {
         return getByIdSync(ctor, id, opt);
     };
-    tmpCtor.getById = function (id, opt) {
+    ctor.getById = function (id, opt) {
         return getById(ctor, id, opt);
     };
-    tmpCtor.find = function (filter, options) {
+    ctor.find = function (filter, options) {
         return find(ctor, filter, options);
     };
-    return tmpCtor;
+    return ctor;
 }
 exports.generateAccessors = generateAccessors;
