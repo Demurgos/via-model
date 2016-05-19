@@ -467,27 +467,28 @@ export function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any 
   return getByIdSync(ctor, token._id, {}); // updateLocal ?
 }
 
-export function generateAccessors (ctor: ModelConstructor): StaticModel {
-  let tmpCtor = <StaticModel> ctor;
-  tmpCtor.getNewSync = function(opt){
-    return <Model> getNewSync(ctor, opt);
-  };
+export function StaticAccessors(): ClassDecorator {
+  return function generateAccessors<TFunction extends StaticModel>(ctor: TFunction): TFunction {
+    ctor.getNewSync = function(opt){
+      return <Model> getNewSync(ctor, opt);
+    };
 
-  tmpCtor.getNew = function(options?: any) {
-    return getNew(ctor, options);
-  };
+    ctor.getNew = function(options?: any) {
+      return getNew(ctor, options);
+    };
 
-  tmpCtor.getByIdSync = function(id: string, opt?: any){
-    return <Model> getByIdSync(ctor, id, opt);
-  };
+    ctor.getByIdSync = function(id: string, opt?: any){
+      return <Model> getByIdSync(ctor, id, opt);
+    };
 
-  tmpCtor.getById = function(id: string, opt?: any){
-    return getById(ctor, id, opt);
-  };
+    ctor.getById = function(id: string, opt?: any){
+      return getById(ctor, id, opt);
+    };
 
-  tmpCtor.find = function(filter: utils.Document, options?: model.FindOptions){
-    return find(ctor, filter, options);
-  };
+    ctor.find = function(filter: utils.Document, options?: model.FindOptions){
+      return find(ctor, filter, options);
+    };
 
-  return tmpCtor;
+    return ctor;
+  }
 }
