@@ -5,6 +5,8 @@ import {model, proxy, schema, utils, dotPath, type} from "via-core";
 
 import {deepMerge} from "./helpers";
 import {ModelsGroup} from "./models-group";
+import {ModelConstructor} from "./interfaces/model-constructor";
+import {StaticModel} from "./interfaces/static-model";
 
 export class Model implements model.Model {
   public _: Model; // self-reference
@@ -463,18 +465,6 @@ export function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any 
   }
   let ctor = modelsGroup.getModelClass(token._name, true);
   return getByIdSync(ctor, token._id, {}); // updateLocal ?
-}
-
-export interface ModelConstructor extends model.ModelConstructor {
-  new (options?: any): Model;
-}
-
-export interface StaticModel extends ModelConstructor, model.StaticModel {
-  getNewSync (opt?: any): Model;
-  getNew (opt?: any): Bluebird<Model>;
-  getByIdSync (id: string, opt?: any): Model;
-  getById (id: string, opt?: any): Bluebird<Model>;
-  find (filter: Object, opt?: model.FindOptions): Bluebird<Model[]>;
 }
 
 export function generateAccessors (ctor: ModelConstructor): StaticModel {

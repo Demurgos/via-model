@@ -1,6 +1,8 @@
 import * as Bluebird from "bluebird";
 import { model, proxy, schema, utils, dotPath, type } from "via-core";
 import { ModelsGroup } from "./models-group";
+import { ModelConstructor } from "./interfaces/model-constructor";
+import { StaticModel } from "./interfaces/static-model";
 export declare class Model implements model.Model {
     _: Model;
     protected _name: string;
@@ -47,14 +49,4 @@ export declare function getById(ctor: model.ModelConstructor, id: string, opt?: 
 export declare function find(ctor: model.ModelConstructor, filter: Object, opt?: model.FindOptions): Bluebird<Model[]>;
 export declare function cast(list: any[], modelsGroup: ModelsGroup): model.Model[];
 export declare function castOne(token: model.ModelToken, modelsGroup: ModelsGroup): any;
-export interface ModelConstructor extends model.ModelConstructor {
-    new (options?: any): Model;
-}
-export interface StaticModel extends ModelConstructor, model.StaticModel {
-    getNewSync(opt?: any): Model;
-    getNew(opt?: any): Bluebird<Model>;
-    getByIdSync(id: string, opt?: any): Model;
-    getById(id: string, opt?: any): Bluebird<Model>;
-    find(filter: Object, opt?: model.FindOptions): Bluebird<Model[]>;
-}
 export declare function generateAccessors(ctor: ModelConstructor): StaticModel;
